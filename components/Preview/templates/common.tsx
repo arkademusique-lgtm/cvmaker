@@ -1,5 +1,4 @@
 import React from 'react';
-// Fix: Changed non-existent ThemeColorData to ThemeColor and updated Section component.
 import { PhotoShape, ThemeColor } from "../../../types";
 import * as Icons from '../../Icons';
 
@@ -18,6 +17,8 @@ interface SectionProps {
     children: React.ReactNode;
 }
 
+// Fix: Section component was updated to be simpler as it was not being used with all its props.
+// This is a preemptive fix to align with its usage in templates.
 export const Section: React.FC<SectionProps> = ({ title, color, icon, children }) => (
     <section className="mb-8">
         <h3 className={`text-xl font-bold uppercase mb-4 flex items-center gap-2 text-${color}-800`}>

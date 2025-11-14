@@ -61,6 +61,7 @@ export const templates: { id: Template, icon: React.FC<{className?: string}>, la
     {id: 'infographic', icon: Icons.Sparkles, label: 'Infographie'},
     {id: 'two-tone', icon: Icons.Library, label: 'Bicolore'},
     {id: 'moderno', icon: Icons.User, label: 'Moderno'},
+    {id: 'darcy', icon: Icons.Layout, label: 'Darcy'},
 ];
 export const templateKeys = templates.map(t => t.id);
 

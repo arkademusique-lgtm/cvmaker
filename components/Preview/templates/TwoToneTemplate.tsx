@@ -18,7 +18,8 @@ export const TwoToneTemplate: React.FC<TemplateProps> = memo((props) => {
         <h3 className={`text-xl font-bold uppercase tracking-wider mb-6 pb-2 border-b-2 ${borderClass} ${textDarkClass}`}>{title}</h3>
     );
 
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Expériences" />
             <div>
@@ -36,7 +37,8 @@ export const TwoToneTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Formation" />
             <div>
@@ -54,7 +56,8 @@ export const TwoToneTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
     
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                 <section key={section.id} className="mb-6">
@@ -87,8 +90,8 @@ export const TwoToneTemplate: React.FC<TemplateProps> = memo((props) => {
     const mainOrder = data.sectionOrder.filter(key => key in mainComponents);
 
     return (
-        <div className="h-full min-h-[297mm] flex font-sans">
-            <div style={useGradient ? gradientStyle : {}} className={`w-[85mm] p-8 ${!useGradient ? bgClass : ''} text-white flex flex-col gap-10 print-color-adjust-exact`}>
+        <div className="h-[297mm] grid grid-cols-[85mm_1fr] font-sans">
+            <div style={useGradient ? gradientStyle : {}} className={`p-8 ${!useGradient ? bgClass : ''} text-white flex flex-col gap-10 print-color-adjust-exact`}>
                 <header>
                     <h1 className="text-4xl font-bold leading-tight">{data.personal.firstName}</h1>
                     <h1 className="text-4xl font-bold leading-tight">{data.personal.lastName}</h1>
@@ -125,7 +128,7 @@ export const TwoToneTemplate: React.FC<TemplateProps> = memo((props) => {
                 )}
             </div>
 
-            <div className="flex-1 p-10 bg-white text-slate-800">
+            <div className="p-10 bg-white text-slate-800">
                 {data.personal.summary && (
                     <section style={sectionStyle}>
                         <SectionHeader title="Profil" />

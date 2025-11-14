@@ -17,6 +17,7 @@ import { DarkModernTemplate } from './templates/DarkModernTemplate';
 import { InfographicTemplate } from './templates/InfographicTemplate';
 import { TwoToneTemplate } from './templates/TwoToneTemplate';
 import { ModernoTemplate } from './templates/ModernoTemplate';
+import { DarcyTemplate } from './templates/DarcyTemplate';
 
 interface PreviewPanelProps {
     cvData: CVData;
@@ -56,6 +57,7 @@ const TemplateComponents: Record<Template, React.ComponentType<any>> = {
     infographic: InfographicTemplate,
     'two-tone': TwoToneTemplate,
     moderno: ModernoTemplate,
+    darcy: DarcyTemplate,
 };
 
 export const PreviewPanel: React.FC<PreviewPanelProps> = memo(({ 

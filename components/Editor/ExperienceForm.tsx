@@ -24,7 +24,6 @@ export const ExperienceForm: React.FC<Props> = memo(({ experiences, dispatch }) 
             id="experiences"
             title="Expériences"
             icon={<Icons.Briefcase className="h-5 w-5 text-teal-500" />}
-            // Fix: Changed prop name to camelCase.
             addItemAction={addItem}
         >
             {experiences.map((exp) => (

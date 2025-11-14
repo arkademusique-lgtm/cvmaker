@@ -37,7 +37,8 @@ export const InfographicTemplate: React.FC<TemplateProps> = memo((props) => {
     const borderClass = `border-${themeColor}-${Math.max(400, colorShade - 100)}`;
     const gradientStyle = useGradient ? { background: gradients[themeColor] } : {};
     
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Expériences" themeColor={themeColor} colorShade={colorShade} useGradient={useGradient} icon={<Icons.Briefcase className="h-6 w-6"/>} />
             <div>
@@ -55,7 +56,8 @@ export const InfographicTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                  <section key={section.id}>
@@ -77,7 +79,8 @@ export const InfographicTemplate: React.FC<TemplateProps> = memo((props) => {
         </div>
     );
     
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Formation" themeColor={themeColor} colorShade={colorShade} useGradient={useGradient} icon={<Icons.GraduationCap className="h-6 w-6"/>} />
             <div>
@@ -95,7 +98,8 @@ export const InfographicTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const Skills = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Skills: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Compétences" themeColor={themeColor} colorShade={colorShade} useGradient={useGradient} icon={<Icons.Settings className="h-6 w-6"/>} />
             <div className="space-y-3 bg-white p-4 shadow-sm" style={roundedStyle}>
@@ -129,7 +133,7 @@ export const InfographicTemplate: React.FC<TemplateProps> = memo((props) => {
     const sidebarOrder = data.sectionOrder.filter(key => key in sidebarComponents);
 
     return (
-        <div className="h-full min-h-[297mm] p-[12mm] bg-slate-50 font-sans">
+        <div className="h-[297mm] p-[12mm] bg-slate-50 font-sans">
             <header className="text-center mb-8">
                 <h1 className="text-5xl font-black text-slate-800">{data.personal.firstName} {data.personal.lastName}</h1>
                 <p className={`text-2xl font-light ${textClass} mt-2`}>{data.personal.title}</p>

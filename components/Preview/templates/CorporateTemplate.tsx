@@ -16,7 +16,8 @@ export const CorporateTemplate: React.FC<TemplateProps> = memo((props) => {
         <h3 style={roundedStyle} className="bg-slate-800 text-white px-4 py-1 text-sm font-bold uppercase inline-block mb-4">{title}</h3>
     );
     
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Expérience Professionnelle" />
             <div>
@@ -31,7 +32,8 @@ export const CorporateTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Formation" />
             {data.education.map((e, i) => (
@@ -44,21 +46,24 @@ export const CorporateTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const Skills = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Skills: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Compétences" />
             <div className="grid grid-cols-2 gap-2">{data.skills.map((s) => <div key={s.id} style={roundedStyle} className="text-sm border border-slate-200 px-2 py-1 bg-slate-50 flex items-center justify-between"><span>{s.name}</span>{visibility.showSkillLevels && <SkillRating level={s.level} colorClass={bgClass}/>}</div>)}</div>
         </section>
     );
 
-    const Hobbies = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Hobbies: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Loisirs" />
             <p className="text-sm text-slate-700">{data.hobbies.join(', ')}</p>
         </section>
     );
 
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                  <section key={section.id}>
@@ -91,7 +96,7 @@ export const CorporateTemplate: React.FC<TemplateProps> = memo((props) => {
     const sectionComponents = { experiences: Experiences, education: Education, skills: Skills, hobbies: Hobbies, customSections: CustomSections };
 
     return (
-        <div className={`h-full min-h-[297mm] bg-white font-sans`}>
+        <div className={`h-[297mm] bg-white font-sans`}>
             <header className="bg-slate-100 p-10 border-b border-slate-300">
                 <div className="flex justify-between items-center">
                     <div>

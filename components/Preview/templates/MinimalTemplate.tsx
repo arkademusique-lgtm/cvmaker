@@ -20,19 +20,22 @@ export const MinimalTemplate: React.FC<TemplateProps> = memo((props) => {
         }
     };
     
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className="font-bold uppercase tracking-widest text-xs mb-4 border-b pb-1 flex items-center gap-2">{withIcons && <Icons.Briefcase className="h-3 w-3" />}Expériences</h3>
             {data.experiences.map((e, i) => <div key={e.id} style={i < data.experiences.length - 1 ? itemStyle : undefined} className="break-inside-avoid-page"><h4 className="font-bold">{e.role}</h4><div className="text-xs text-slate-400 uppercase mb-2">{e.company}, {e.city} | {e.date}</div><p className="text-sm text-slate-700 whitespace-pre-line">{e.description}</p></div>)}
         </section>
     );
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className="font-bold uppercase tracking-widest text-xs mb-4 border-b pb-1 flex items-center gap-2">{withIcons && <Icons.GraduationCap className="h-3 w-3" />}Formation</h3>
             {data.education.map((e, i) => <div key={e.id} style={i < data.education.length - 1 ? itemStyle : undefined} className="text-sm break-inside-avoid-page"><div className="flex justify-between"><span className="font-bold">{e.degree}</span><span className="text-slate-500">{e.date}</span></div><div className="text-xs text-slate-500">{e.school}, {e.city}</div></div>)}
         </section>
     );
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                 <section key={section.id} className="mb-6">
@@ -43,13 +46,15 @@ export const MinimalTemplate: React.FC<TemplateProps> = memo((props) => {
         </div>
     );
     
-    const Skills = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Skills: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className="font-bold uppercase tracking-widest text-xs mb-4 border-b pb-1 flex items-center gap-2">{withIcons && <Icons.Settings className="h-3 w-3" />}Compétences</h3>
             <div className="flex flex-col gap-2">{data.skills.map((s) => <div key={s.id} className="text-sm flex items-center justify-between"><span>{s.name}</span> {visibility.showSkillLevels && <SkillRating level={s.level} colorClass={colorClass} />}</div>)}</div>
         </section>
     );
-    const Hobbies = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Hobbies: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className="font-bold uppercase tracking-widest text-xs mb-4 border-b pb-1 flex items-center gap-2">{withIcons && <Icons.Star className="h-3 w-3" />}Loisirs</h3>
             <div className="flex flex-col gap-1">{data.hobbies.map((h, i) => <span key={i} className="text-sm">{h}</span>)}</div>
@@ -63,7 +68,7 @@ export const MinimalTemplate: React.FC<TemplateProps> = memo((props) => {
     const sidebarOrder = data.sectionOrder.filter(key => key in sidebarComponents);
     
     return (
-        <div className={`h-full min-h-[297mm] p-[15mm] bg-white text-slate-900 font-sans`}>
+        <div className={`h-[297mm] p-[15mm] bg-white text-slate-900 font-sans`}>
             <header className="border-b-2 border-slate-900 pb-6 mb-8 flex justify-between items-end">
                 <div>
                     <h1 className="text-4xl font-light uppercase tracking-widest">{data.personal.lastName}</h1>

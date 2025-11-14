@@ -21,7 +21,8 @@ export const DarkModernTemplate: React.FC<TemplateProps> = memo((props) => {
         <h3 className="text-xl font-bold text-white uppercase tracking-wider mb-6">{title}</h3>
     );
 
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Expériences" />
             <div>
@@ -38,7 +39,8 @@ export const DarkModernTemplate: React.FC<TemplateProps> = memo((props) => {
             </div>
         </section>
     );
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Formation" />
             <div>
@@ -55,7 +57,8 @@ export const DarkModernTemplate: React.FC<TemplateProps> = memo((props) => {
             </div>
         </section>
     );
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                 <section key={section.id} className="mb-6">
@@ -88,8 +91,8 @@ export const DarkModernTemplate: React.FC<TemplateProps> = memo((props) => {
     const mainOrder = data.sectionOrder.filter(key => key in sectionComponents);
 
     return (
-        <div className="h-full min-h-[297mm] bg-slate-800 text-slate-300 font-sans flex print-color-adjust-exact">
-            <div className="w-[80mm] bg-slate-900 p-8 flex flex-col gap-8 flex-shrink-0">
+        <div className="h-[297mm] bg-slate-800 text-slate-300 font-sans grid grid-cols-[80mm_1fr] print-color-adjust-exact">
+            <div className="bg-slate-900 p-8 flex flex-col gap-8">
                 <div className="text-center">
                      <ProfilePhoto
                         photo={data.personal.photo}
@@ -135,7 +138,7 @@ export const DarkModernTemplate: React.FC<TemplateProps> = memo((props) => {
                 )}
             </div>
 
-            <div className="flex-1 p-10">
+            <div className="p-10">
                 <header className="mb-10">
                     <h1 className="text-5xl font-extrabold text-white">{data.personal.firstName} <span className={textClass}>{data.personal.lastName}</span></h1>
                     <h2 className="text-2xl font-light text-slate-300 mt-2">{data.personal.title}</h2>

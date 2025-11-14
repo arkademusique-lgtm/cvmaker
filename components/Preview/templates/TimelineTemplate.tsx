@@ -26,7 +26,8 @@ export const TimelineTemplate: React.FC<TemplateProps> = memo((props) => {
         }
     };
 
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
         {data.experiences.map((exp, i) => (
             <div key={exp.id} style={i < data.experiences.length - 1 ? itemStyle : undefined} className="relative break-inside-avoid-page">
@@ -40,7 +41,8 @@ export const TimelineTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                 <section key={section.id} className="mb-6">
@@ -59,13 +61,16 @@ export const TimelineTemplate: React.FC<TemplateProps> = memo((props) => {
         </div>
     );
 
-    const Skills = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Skills: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}><h3 className={`font-bold uppercase text-sm mb-4 pb-1 border-b ${borderClass} ${textDarkClass}`}>Compétences</h3>{data.skills.map((s) => <div key={s.id} className="text-sm mb-2 text-slate-600 flex justify-between items-center"><span>{s.name}</span>{visibility.showSkillLevels && <SkillRating level={s.level} colorClass={bgClass} />}</div>)}</section>
     );
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}><h3 className={`font-bold uppercase text-sm mb-4 pb-1 border-b ${borderClass} ${textDarkClass}`}>Formation</h3>{data.education.map((e, i) => (<div key={e.id} style={i < data.education.length - 1 ? itemStyle : undefined} className="break-inside-avoid-page"><div className="font-bold text-sm">{e.degree}</div><div className="text-xs text-slate-400">{e.school}, {e.city}</div><div className="text-xs text-slate-400">{e.date}</div>{e.description && <p className="text-xs text-slate-500 mt-1 whitespace-pre-line">{e.description}</p>}</div>))}</section>
     );
-    const Hobbies = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Hobbies: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}><h3 className={`font-bold uppercase text-sm mb-4 pb-1 border-b ${borderClass} ${textDarkClass}`}>Loisirs</h3>{data.hobbies.map((h, i) => <div key={i} className="text-sm mb-1 text-slate-600">{h}</div>)}</section>
     );
 
@@ -76,7 +81,7 @@ export const TimelineTemplate: React.FC<TemplateProps> = memo((props) => {
     const sidebarOrder = data.sectionOrder.filter(key => key in sidebarComponents);
 
     return (
-        <div className={`h-full min-h-[297mm] p-[15mm] bg-white`}>
+        <div className={`h-[297mm] p-[15mm] bg-white`}>
             <header className="flex flex-col items-center border-b-2 border-slate-100 pb-8 mb-8">
                 <h1 className="text-4xl font-bold uppercase tracking-widest mb-2 text-slate-900">{data.personal.firstName} {data.personal.lastName}</h1>
                 <div style={{...roundedStyle, ...(useGradient ? gradientStyle : {})}} className={`px-4 py-1 ${!useGradient ? bgClass : ''} text-white font-bold text-sm mb-4`}>{data.personal.title}</div>

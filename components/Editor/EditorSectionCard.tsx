@@ -6,7 +6,6 @@ interface EditorSectionCardProps {
     title: string;
     icon: React.ReactNode;
     children: React.ReactNode;
-    // Fix: Changed prop name to camelCase to be a valid identifier.
     addItemAction?: () => void;
     onDelete?: () => void;
     onTitleChange?: (newTitle: string) => void;

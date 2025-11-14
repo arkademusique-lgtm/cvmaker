@@ -22,7 +22,6 @@ export const EducationForm: React.FC<Props> = memo(({ education, dispatch }) => 
             id="education"
             title="Formation"
             icon={<Icons.GraduationCap className="h-5 w-5 text-orange-500" />}
-            // Fix: Changed prop name to camelCase.
             addItemAction={addItem}
         >
             {education.map((edu) => (

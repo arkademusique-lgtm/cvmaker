@@ -15,7 +15,8 @@ export const CompactTemplate: React.FC<TemplateProps> = memo((props) => {
         <h3 className={`font-bold text-sm uppercase ${textDarkClass} border-b ${borderClass} mb-2 pb-1`}>{title}</h3>
     );
     
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Expériences" />
             {data.experiences.map((e, i) => (
@@ -27,7 +28,8 @@ export const CompactTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                  <section key={section.id} className="mb-6">
@@ -43,19 +45,22 @@ export const CompactTemplate: React.FC<TemplateProps> = memo((props) => {
         </div>
     );
     
-    const Skills = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Skills: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Compétences" />
             <div className="flex flex-col gap-1">{data.skills.map(s => <div key={s.id} className="flex justify-between items-center"><span>{s.name}</span> {visibility.showSkillLevels && <SkillRating level={s.level} colorClass={bgClass}/>}</div>)}</div>
         </section>
     );
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Formation" />
             {data.education.map((e, i) => <div key={e.id} style={i < data.education.length - 1 ? itemStyle : undefined} className="break-inside-avoid-page"><div className="font-bold">{e.degree}</div><div className="text-slate-500">{e.school}, {e.city} ({e.date})</div><p className="text-slate-600 whitespace-pre-line text-[10px] leading-tight mt-1">{e.description}</p></div>)}
         </section>
     );
-    const Hobbies = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Hobbies: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Loisirs" />
             <ul className="list-disc pl-4 space-y-1">{data.hobbies.map((h, i) => <li key={i}>{h}</li>)}</ul>
@@ -80,7 +85,7 @@ export const CompactTemplate: React.FC<TemplateProps> = memo((props) => {
     const sidebarOrder = data.sectionOrder.filter(key => key in sidebarComponents);
 
     return (
-        <div className={`h-full min-h-[297mm] p-[10mm] bg-white text-slate-800 font-sans text-xs leading-snug`}>
+        <div className={`h-[297mm] p-[10mm] bg-white text-slate-800 font-sans text-xs leading-snug`}>
             <header className="flex justify-between items-center mb-4 pb-4 border-b border-slate-300">
                 <div>
                     <h1 className="text-3xl font-bold">{data.personal.firstName} {data.personal.lastName}</h1>

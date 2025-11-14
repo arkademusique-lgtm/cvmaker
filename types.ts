@@ -76,7 +76,7 @@ export interface VisibilitySettings {
   showSkillLevels: boolean;
 }
 
-export type Template = 'sidebar' | 'header' | 'minimal' | 'elegant' | 'creative' | 'timeline' | 'corporate' | 'tech' | 'split' | 'compact' | 'centered' | 'top-focus' | 'sidebar-right' | 'split-wide' | 'minimal-icons' | 'header-photo' | 'dark-modern' | 'infographic' | 'two-tone' | 'moderno';
+export type Template = 'sidebar' | 'header' | 'minimal' | 'elegant' | 'creative' | 'timeline' | 'corporate' | 'tech' | 'split' | 'compact' | 'centered' | 'top-focus' | 'sidebar-right' | 'split-wide' | 'minimal-icons' | 'header-photo' | 'dark-modern' | 'infographic' | 'two-tone' | 'moderno' | 'darcy';
 export type FontFamily = 'sans' | 'serif' | 'mono' | 'script';
 export type ThemeColor = 'emerald' | 'blue' | 'purple' | 'rose' | 'slate' | 'orange' | 'indigo' | 'teal' | 'cyan' | 'pink' | 'amber' | 'lime' | 'gray' | 'yellow' | 'sky';
 export type FontSize = 'sm' | 'base' | 'lg';

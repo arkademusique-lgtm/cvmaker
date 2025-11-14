@@ -7,11 +7,12 @@ import { PreviewPanel } from './Preview/PreviewPanel';
 import { AIAssistant } from './AI/AIAssistant';
 import * as Icons from './Icons';
 
-// Fix: Add types for window properties from externally loaded scripts
+// Updated types for direct use of jsPDF and html2canvas for a higher quality export.
 declare global {
   interface Window {
     pdfjsLib: any;
-    html2pdf: any;
+    jspdf: { jsPDF: new (options: any) => any };
+    html2canvas: (element: HTMLElement, options?: any) => Promise<HTMLCanvasElement>;
   }
 }
 
@@ -125,46 +126,107 @@ const CVBuilder = () => {
     }
   };
 
+  /**
+   * Helper to dynamically load a script and wait for it to be ready.
+   */
+  const loadScript = (src: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) {
+        return resolve();
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Le chargement du script a échoué: ${src}`));
+      document.head.appendChild(script);
+    });
+  };
+
+  /**
+   * Handles the PDF download process. This new version simplifies the capture logic
+   * by preparing the DOM element to its natural print size and appearance before
+   * using html2canvas, which has proven to be much more reliable.
+   */
   const handleDownload = async () => {
     setIsGeneratingPdf(true);
+
+    // On small screens, switch to the preview tab to ensure the element is rendered in the DOM
     if (window.innerWidth < 1024 && activeTab !== 'preview') {
       setActiveTab('preview');
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    const element = document.getElementById('cv-preview');
-    if (!element) {
-        alert("Erreur: L'élément de prévisualisation du CV n'a pas été trouvé.");
-        setIsGeneratingPdf(false);
-        return;
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for render
     }
 
-    const opt = {
-      margin: 0,
-      filename: `CV_${cvData.personal.lastName || 'CV'}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
+    const elementToPrint = document.getElementById('cv-preview');
+    const previewWrapper = document.getElementById('cv-preview-wrapper');
+
+    if (!elementToPrint || !previewWrapper) {
+      alert("Erreur : L'élément de prévisualisation du CV est introuvable.");
+      setIsGeneratingPdf(false);
+      return;
+    }
+
+    // Store original styles to restore them after capture
+    const originalWrapperTransform = previewWrapper.style.transform;
+    const originalPreviewTransform = elementToPrint.style.transform;
+    const hadShadow = elementToPrint.classList.contains('shadow-2xl');
 
     try {
-      if (!window.html2pdf) {
-        await new Promise<void>((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error("Le chargement de la librairie de génération PDF a échoué."));
-          document.head.appendChild(script);
-        });
+      // 1. Dynamically load required libraries
+      await Promise.all([
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
+        loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js')
+      ]);
+
+      // 2. Prepare the DOM element for a perfect capture
+      // Reset any scaling transforms and remove box-shadow
+      previewWrapper.style.transform = 'scale(1)';
+      elementToPrint.style.transform = 'scale(1)';
+      if (hadShadow) {
+        elementToPrint.classList.remove('shadow-2xl');
       }
-      await window.html2pdf().set(opt).from(element).save();
+      
+      // Allow the browser a moment to apply style changes
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // 3. Capture the element with html2canvas at high resolution
+      const canvas = await window.html2canvas(elementToPrint, {
+        scale: 4, // High resolution for print quality
+        useCORS: true,
+        logging: false,
+        // By not specifying width/height, we let html2canvas capture the element's natural size
+      });
+
+      // 4. Generate the PDF document
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      const pdf = new window.jspdf.jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297
+
+      // Add the captured image, stretching it to fill the A4 page.
+      // Since the source element is styled to be 210mm x 297mm, there is no distortion.
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`CV_${cvData.personal.lastName || 'CV'}.pdf`);
+
     } catch (err) {
       console.error("PDF Generation Error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Une erreur inconnue est survenue.";
-      alert(`Erreur lors de la génération du PDF: ${errorMessage}`);
+      const message = err instanceof Error ? err.message : "Une erreur inconnue est survenue.";
+      alert(`Erreur lors de la génération du PDF: ${message}`);
     } finally {
+      // 5. CRITICAL: Restore original styles to the preview element
+      previewWrapper.style.transform = originalWrapperTransform;
+      elementToPrint.style.transform = originalPreviewTransform;
+      if (hadShadow) {
+        elementToPrint.classList.add('shadow-2xl');
+      }
       setIsGeneratingPdf(false);
     }
   };
+
 
   const fontClass = fontFamily === 'serif' ? 'font-serif' : fontFamily === 'mono' ? 'font-mono' : fontFamily === 'script' ? "font-['Dancing_Script',_cursive]" : 'font-sans';
 

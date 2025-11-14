@@ -13,7 +13,8 @@ export const ElegantTemplate: React.FC<TemplateProps> = memo((props) => {
     const textDarkClass = `text-${themeColor}-${Math.min(900, colorShade + 200)}`;
     const bgClass = `bg-${themeColor}-${colorShade}`;
 
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-center text-lg font-bold uppercase tracking-widest mb-6 ${textDarkClass}`}>Expérience Professionnelle</h3>
             <div>
@@ -28,22 +29,26 @@ export const ElegantTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}><h3 className={`text-center text-sm font-bold uppercase tracking-widest mb-4 ${textDarkClass}`}>Formation</h3>{data.education.map((edu, i) => (<div key={edu.id} style={i < data.education.length - 1 ? itemStyle : undefined} className="text-center break-inside-avoid-page"><div className="font-bold text-sm">{edu.degree}</div><div className="text-xs text-slate-500 italic">{edu.school}, {edu.city} — {edu.date}</div>{edu.description && <p className="text-xs text-slate-500 mt-1 whitespace-pre-line">{edu.description}</p>}</div>))}</section>
     );
 
-    const Skills = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Skills: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}><h3 className={`text-center text-sm font-bold uppercase tracking-widest mb-4 ${textDarkClass}`}>Compétences</h3><div className="flex flex-wrap justify-center gap-x-4 gap-y-2">{data.skills.map((skill) => (<div key={skill.id} style={roundedStyle} className={`border ${borderClass} px-3 py-1 text-xs ${textClass} flex items-center gap-2`}><span>{skill.name}</span> {visibility.showSkillLevels && <SkillRating level={skill.level} colorClass={bgClass}/>} </div>))}</div></section>
     );
     
-    const Hobbies = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Hobbies: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style} className="mt-8 pt-8 border-t border-slate-100">
             <h3 className={`text-center text-sm font-bold uppercase tracking-widest mb-4 ${textDarkClass}`}>Loisirs</h3>
             <p className="text-center text-sm text-slate-600">{data.hobbies.join(', ')}</p>
         </section>
     );
 
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
         {data.customSections.map(section => (
              <section key={section.id} className="mb-6">
@@ -78,7 +83,7 @@ export const ElegantTemplate: React.FC<TemplateProps> = memo((props) => {
     const footerOrder = data.sectionOrder.filter(key => key in footerSections);
 
     return (
-        <div className={`h-full min-h-[297mm] p-[15mm] bg-white text-slate-800`}>
+        <div className={`h-[297mm] p-[15mm] bg-white text-slate-800`}>
             <div className="text-center" style={sectionStyle}>
                 <h1 className={`text-5xl font-serif mb-2 ${textDarkClass}`}>{data.personal.firstName} {data.personal.lastName}</h1>
                 <p className="text-xl italic text-slate-500 mb-4">{data.personal.title}</p>

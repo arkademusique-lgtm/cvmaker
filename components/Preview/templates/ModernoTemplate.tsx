@@ -1,21 +1,9 @@
 import React, { memo } from 'react';
-import { CVData, ThemeColor, VisibilitySettings, PhotoShape } from '../../../types';
+import { CVData, TemplateProps } from '../../../types';
 import { formatUrl } from './common';
 import { gradients } from '../../../constants';
 
-interface Props {
-    data: CVData;
-    themeColor: ThemeColor;
-    visibility: VisibilitySettings;
-    sectionSpacing: number;
-    itemSpacing: number;
-    borderRadius: number;
-    useGradient: boolean;
-    colorShade: number;
-    photoShape: PhotoShape;
-}
-
-export const ModernoTemplate: React.FC<Props> = memo(({ data, themeColor, visibility, sectionSpacing, itemSpacing, borderRadius, useGradient, colorShade, photoShape }) => {
+export const ModernoTemplate: React.FC<TemplateProps> = memo(({ data, themeColor, visibility, sectionSpacing, itemSpacing, borderRadius, useGradient, colorShade, photoShape }) => {
     const initials = `${data.personal.firstName?.[0] || ''}${data.personal.lastName?.[0] || ''}`;
     const sectionStyle = { marginBottom: `${sectionSpacing * 0.25}rem` };
     const itemStyle = { marginBottom: `${itemSpacing * 0.25}rem` };
@@ -44,7 +32,7 @@ export const ModernoTemplate: React.FC<Props> = memo(({ data, themeColor, visibi
     );
     
     return (
-        <div className={`h-full min-h-[297mm] bg-white font-sans`}>
+        <div className={`h-[297mm] bg-white font-sans`}>
             <div style={useGradient ? gradientStyle : {}} className={`${!useGradient ? bgClass : ''} h-[80mm] print-color-adjust-exact text-white p-10 flex flex-col justify-center text-center relative`}>
                 <h1 className="text-4xl font-bold uppercase mb-1">{data.personal.firstName} {data.personal.lastName}</h1>
                 <h2 className="text-xl opacity-90 font-light">{data.personal.title}</h2>

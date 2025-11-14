@@ -23,7 +23,8 @@ export const CreativeTemplate: React.FC<TemplateProps> = memo((props) => {
         <h3 className={`text-2xl font-black mb-6 flex items-center gap-2 ${textDarkClass}`}><span style={useGradient ? gradientStyle : {}} className={`w-8 h-1 ${!useGradient ? bgClass : ''}`}></span>{title}</h3>
     );
     
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <SectionHeader title="Expériences" />
             {data.experiences.map((exp, i) => (
@@ -39,7 +40,8 @@ export const CreativeTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-xl font-black mb-4 ${textDarkClass}`}>Formation</h3>
             <div className="flex flex-col gap-4">
@@ -53,21 +55,24 @@ export const CreativeTemplate: React.FC<TemplateProps> = memo((props) => {
         </section>
     );
 
-    const Skills = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Skills: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-xl font-black mb-4 ${textDarkClass}`}>Compétences</h3>
             <div className="flex flex-col gap-2">{data.skills.map((s) => (<div key={s.id} className="flex items-center gap-2"><div style={useGradient ? gradientStyle : {}} className={`h-2 w-2 rounded-full ${!useGradient ? bgClass : ''}`}></div><span className="font-medium text-slate-700">{s.name}</span><div className="flex-1"></div>{visibility.showSkillLevels && <SkillRating level={s.level} colorClass={bgClass} />}</div>))}</div>
         </section>
     );
 
-    const Hobbies = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Hobbies: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-xl font-black mb-4 ${textDarkClass}`}>Loisirs</h3>
             <div className="flex flex-col gap-2">{data.hobbies.map((h, i) => (<div key={i} className="flex items-center gap-2"><div style={useGradient ? gradientStyle : {}} className={`h-2 w-2 rounded-full ${!useGradient ? bgClass : ''}`}></div><span className="font-medium text-slate-700">{h}</span></div>))}</div>
         </section>
     );
     
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
         {data.customSections.map(section => (
             <section key={section.id} className="mb-6">
@@ -105,7 +110,7 @@ export const CreativeTemplate: React.FC<TemplateProps> = memo((props) => {
     const sidebarOrder = data.sectionOrder.filter(key => key in sidebarComponents);
 
     return (
-        <div className={`h-full min-h-[297mm] bg-white overflow-hidden relative font-sans`}>
+        <div className={`h-[297mm] bg-white overflow-hidden relative font-sans`}>
             <div className={`absolute -top-24 -right-24 w-96 h-96 rounded-full ${lightBgClass} opacity-50`}></div>
             <div className={`absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-transparent via-${themeColor}-500 to-transparent`}></div>
             <div className="p-12 relative z-10">

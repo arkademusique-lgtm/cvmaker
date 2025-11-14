@@ -14,7 +14,8 @@ export const CenteredTemplate: React.FC<TemplateProps> = memo((props) => {
     const sectionStyle = { marginBottom: `${sectionSpacing * 0.25}rem` };
     const itemStyle = { marginBottom: `${itemSpacing * 0.25}rem` };
 
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-center text-sm font-bold uppercase tracking-widest text-slate-400 mb-6`}>Expériences</h3>
             <div>
@@ -33,7 +34,8 @@ export const CenteredTemplate: React.FC<TemplateProps> = memo((props) => {
             </div>
         </section>
     );
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-center text-sm font-bold uppercase tracking-widest text-slate-400 mb-4`}>Formation</h3>
             {data.education.map((e, i) => (
@@ -46,19 +48,22 @@ export const CenteredTemplate: React.FC<TemplateProps> = memo((props) => {
             ))}
         </section>
     );
-    const Skills = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Skills: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-center text-sm font-bold uppercase tracking-widest text-slate-400 mb-4`}>Compétences</h3>
             <div className="text-center text-sm text-slate-600">{data.skills.map(s => s.name).join(' • ')}</div>
         </section>
     );
-    const Hobbies = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Hobbies: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style} className="mt-8 pt-8 border-t border-slate-100">
             <h3 className={`text-center text-sm font-bold uppercase tracking-widest text-slate-400 mb-4`}>Loisirs</h3>
             <p className="text-center text-sm text-slate-600">{data.hobbies.join(' • ')}</p>
         </section>
     );
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                  <section key={section.id} className="mb-6">
@@ -97,7 +102,7 @@ export const CenteredTemplate: React.FC<TemplateProps> = memo((props) => {
     const footerOrder = data.sectionOrder.filter(key => key in footerSections);
 
     return (
-        <div className={`h-full min-h-[297mm] p-[15mm] bg-white`}>
+        <div className={`h-[297mm] p-[15mm] bg-white`}>
             <header className="text-center mb-10">
                 <ProfilePhoto
                     photo={data.personal.photo}

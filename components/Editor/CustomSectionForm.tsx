@@ -25,7 +25,6 @@ export const CustomSectionForm: React.FC<Props> = memo(({ section, dispatch }) =
             id={`custom-${section.id}`}
             title={section.title}
             icon={<Icons.Plus className="h-5 w-5 text-green-500" />}
-            // Fix: Changed prop name to camelCase.
             addItemAction={addItem}
             onDelete={deleteSection}
             onTitleChange={updateTitle}

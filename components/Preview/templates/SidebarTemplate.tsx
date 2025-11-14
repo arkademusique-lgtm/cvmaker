@@ -28,21 +28,24 @@ export const SidebarTemplate: React.FC<TemplateProps> = memo((props) => {
         }
     };
 
-    const Experiences = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Experiences: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-xl font-bold uppercase mb-4 flex items-center gap-2 ${textDarkClass}`}><Icons.Briefcase className="h-5 w-5" /> Expériences</h3>
             <div>{data.experiences.map((e, i) => <div key={e.id} style={i < data.experiences.length - 1 ? itemStyle : undefined} className="break-inside-avoid-page"><div className="flex justify-between font-bold text-lg"><span>{e.role}</span><span className="text-sm opacity-70">{e.date}</span></div><div className={`${textClass} text-sm mb-1`}>{e.company}, {e.city}</div><p className="text-sm text-slate-600 whitespace-pre-line">{e.description}</p></div>)}</div>
         </section>
     );
 
-    const Education = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const Education: React.FC<{style: React.CSSProperties}> = (p) => (
         <section style={p.style}>
             <h3 className={`text-xl font-bold uppercase mb-4 flex items-center gap-2 ${textDarkClass}`}><Icons.GraduationCap className="h-5 w-5" /> Formation</h3>
             <div>{data.education.map((e, i) => <div key={e.id} style={i < data.education.length - 1 ? itemStyle : undefined} className="break-inside-avoid-page"><div className="flex justify-between font-bold text-lg"><span>{e.degree}</span><span className="text-sm opacity-70">{e.date}</span></div><div className="italic text-sm">{e.school}</div><p className="text-sm text-slate-600 whitespace-pre-line">{e.description}</p></div>)}</div>
         </section>
     );
 
-    const CustomSections = (p: {style: React.CSSProperties}) => (
+    // Fix: Updated component type to React.FC<{style: React.CSSProperties}> to handle 'key' prop correctly.
+    const CustomSections: React.FC<{style: React.CSSProperties}> = (p) => (
         <div style={p.style}>
             {data.customSections.map(section => (
                 <section key={section.id} className="mb-6">
@@ -57,8 +60,8 @@ export const SidebarTemplate: React.FC<TemplateProps> = memo((props) => {
     const mainContentOrder = data.sectionOrder.filter(key => key in sectionComponents);
 
     return (
-        <div className={`flex h-full min-h-[297mm] font-sans ${right ? 'flex-row-reverse' : 'flex-row'}`}>
-            <div className="w-[75mm] bg-slate-900 text-white p-8 flex flex-col gap-8 print-color-adjust-exact flex-shrink-0">
+        <div className={`grid ${right ? 'grid-cols-[1fr_75mm]' : 'grid-cols-[75mm_1fr]'} h-[297mm] font-sans`}>
+            <div className="bg-slate-900 text-white p-8 flex flex-col gap-8 print-color-adjust-exact">
                 <div className="flex justify-center">
                     <ProfilePhoto
                         photo={data.personal.photo}
@@ -93,7 +96,7 @@ export const SidebarTemplate: React.FC<TemplateProps> = memo((props) => {
                     </section>
                 )}
             </div>
-            <div className="flex-1 p-8 bg-white">
+            <div className="p-8 bg-white">
                 <header className={`border-b-4 ${borderClass} pb-6 mb-6`}>
                     <h1 className="text-5xl font-bold text-slate-800 uppercase">{data.personal.firstName} <span className={textClass}>{data.personal.lastName}</span></h1>
                     <h2 className="text-2xl text-slate-600">{data.personal.title}</h2>
