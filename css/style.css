@@ -162,3 +162,12 @@ body.learning [data-learn] { outline: 1px dashed #3fd0ff88; outline-offset: 2px;
   main { padding: 10px 16px; } .hdr { padding: 8px 16px; } #scope { display: none; }
   .cols, .fxlist, .synth { grid-template-columns: 1fr; }
 }
+
+/* shift layer & cheat sheet */
+.shift-on .dbtn.step { font-size: 10px; line-height: 1.1; color: #000; align-items: center; padding: 2px; white-space: normal; }
+.shift-on .device { box-shadow: 0 0 0 2px var(--blue), 0 10px 30px #0009; }
+.dbtn.menu-btn.on { background: var(--blue); color: #000; }
+.cheats { margin-top: 14px; } .cheats summary { cursor: pointer; font-weight: 800; color: var(--org); }
+.cheatgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 6px 22px; font-size: 13px; }
+.cheatgrid h4 { margin: 12px 0 4px; color: var(--blue); font-size: 12px; letter-spacing: .5px; text-transform: uppercase; }
+.cheatgrid ul, .cheatgrid ol { margin: 0; padding-left: 20px; } .cheatgrid li { margin-bottom: 3px; }
