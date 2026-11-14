@@ -12,6 +12,22 @@ const CANDIDATES = [BLE_MIDI_SERVICE, '6e400001-b5a3-f393-e0a9-e50e24dcca9e', '4
   ...['ffe0', 'ffe5', 'fff0', 'fff1', 'fff3', 'ff00', 'ff10', 'ff12', 'ffd0', 'ffd5', 'ffa0', 'ffb0', 'ffc0', 'ffcc', 'ae00', 'ae30', 'ae3a', 'af00', 'af30', 'fee7', 'fee0', 'fee1', 'fe00', 'fd00', 'fda0', 'fe95',
     'ee00', 'ee01', 'f000', 'a000', 'a002', 'abf0', 'ab00', 'e0ff', 'cc00', 'cdd0', '18f0', '1910', '1812', '1800', '1801', '180a', '180f'].map(s16)];
 
+// USB HID keyboard usage → KeyboardEvent.code (same names as the browser's own keyboard events)
+const HID_CODES = (() => {
+  const m = {}; 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach((c, i) => (m[4 + i] = 'Key' + c));
+  for (let i = 1; i <= 9; i++) m[0x1d + i] = 'Digit' + i; m[0x27] = 'Digit0';
+  ['Enter', 'Escape', 'Backspace', 'Tab', 'Space', 'Minus', 'Equal', 'BracketLeft', 'BracketRight', 'Backslash', 'IntlHash', 'Semicolon', 'Quote', 'Backquote', 'Comma', 'Period', 'Slash', 'CapsLock'].forEach((c, i) => (m[0x28 + i] = c));
+  for (let i = 1; i <= 12; i++) m[0x39 + i] = 'F' + i;
+  ['PrintScreen', 'ScrollLock', 'Pause', 'Insert', 'Home', 'PageUp', 'Delete', 'End', 'PageDown', 'ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'NumLock', 'NumpadDivide', 'NumpadMultiply', 'NumpadSubtract', 'NumpadAdd', 'NumpadEnter'].forEach((c, i) => (m[0x46 + i] = c));
+  for (let i = 1; i <= 9; i++) m[0x58 + i] = 'Numpad' + i; m[0x62] = 'Numpad0'; m[0x63] = 'NumpadDecimal'; m[0x64] = 'IntlBackslash'; m[0x65] = 'ContextMenu';
+  for (let i = 13; i <= 24; i++) m[0x68 + i - 13] = 'F' + i;
+  ['ControlLeft', 'ShiftLeft', 'AltLeft', 'MetaLeft', 'ControlRight', 'ShiftRight', 'AltRight', 'MetaRight'].forEach((c, i) => (m[0xe0 + i] = c));
+  return m;
+})();
+export const hidCode = (u) => HID_CODES[u] || 'Usage' + u.toString(16);
+const shortId = (uuid) => { const u = String(uuid).toLowerCase(); return u.length > 8 ? u.slice(4, 8) : u.replace(/^0x/, '').padStart(4, '0'); };
+const sameUuid = (a, b) => { a = String(a).toLowerCase(); b = String(b).toLowerCase(); return a === b || (a.length <= 8 && b.slice(4, 8) === a.padStart(4, '0')); };
+
 export const hex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, '0')).join(' ');
 const pop = (x) => { let n = 0; while (x) { n += x & 1; x >>= 1; } return n; };
 
@@ -23,14 +39,25 @@ const pop = (x) => { let n = 0; while (x) { n += x & 1; x >>= 1; } return n; };
  * Values are auto-ranged from what has been observed.
  */
 export class RawDecoder {
-  constructor(midi) { this.midi = midi; this.mode = 'auto'; this.prev = {}; this.analog = new Set(); this.range = {}; }
+  constructor(midi) { this.midi = midi; this.mode = 'auto'; this.prev = {}; this.analog = new Set(); this.range = {}; this.kb = {}; this.kbdDetected = false; this.onKey = null; }
+  /** Standard HID keyboard report: [modifiers, 0, key1..key6] → key down / up events. */
+  feedKbd(input, id, u8) {
+    const now = new Set(), prev = this.kb[id] || new Set();
+    for (let b = 0; b < 8; b++) if ((u8[0] >> b) & 1) now.add(0xe0 + b);
+    for (let i = 2; i < u8.length; i++) if (u8[i] > 3) now.add(u8[i]);
+    this.kb[id] = now; if (!this.kbdDetected) { this.kbdDetected = true; this.onKbd && this.onKbd(); }
+    for (const u of now) if (!prev.has(u)) this.onKey(hidCode(u), true, input, hex(u8));
+    for (const u of prev) if (!now.has(u)) this.onKey(hidCode(u), false, input, hex(u8));
+  }
   norm(key, v) {
     const r = (this.range[key] ||= { min: v, max: v }); r.min = Math.min(r.min, v); r.max = Math.max(r.max, v);
     const lo = r.max - r.min >= 100 ? r.min : 0, hi = r.max - r.min >= 100 ? r.max : (r.max > 127 ? 255 : 127);
     return Math.round(Math.min(1, Math.max(0, (v - lo) / (hi - lo))) * 127);
   }
   feed(input, id, u8, force) {
-    const mode = force || (this.mode === 'auto' ? (u8.length >= 6 ? 'state' : 'event') : this.mode), rawHex = hex(u8);
+    const looksKbd = u8.length === 8 && u8[1] === 0 && u8.slice(2).every((b) => b === 0 || (b >= 4 && b <= 0xe7));
+    if (this.onKey && !force && (this.mode === 'kbd' || (this.mode === 'auto' && looksKbd && (id.includes('2a4d') || this.kbdDetected)))) return this.feedKbd(input, id, u8);
+    const mode = force || (this.mode === 'auto' || this.mode === 'kbd' ? (u8.length >= 6 ? 'state' : 'event') : this.mode), rawHex = hex(u8);
     if (mode === 'event') {
       const last = u8[u8.length - 1] ?? 0, key = `raw:${id}:${hex(u8.slice(0, Math.max(1, u8.length - 1)))}`;
       return this.midi.dispatch({ type: 'cc', ch: 0, num: 0, val: this.norm(key, last), key, rawLast: last, input, rawHex });
@@ -77,16 +104,16 @@ export class BleLink {
       try { chars = await svc.getCharacteristics(); } catch (e) { continue; }
       for (const c of chars) {
         const pr = Object.entries({ read: c.properties.read, write: c.properties.write, writeNR: c.properties.writeWithoutResponse, notify: c.properties.notify, indicate: c.properties.indicate }).filter(([, v]) => v).map(([k]) => k).join('/');
-        const line = `  · ${svc.uuid.slice(0, 8)} / ${c.uuid} [${pr}]`; this.log(line); this.summary.push(line);
+        const line = `  · ${String(svc.uuid).slice(0, 8)} / ${c.uuid} [${pr}]`; this.log(line); this.summary.push(line);
         if (c.properties.notify || c.properties.indicate) {
-          const isMidi = c.uuid === BLE_MIDI_CHAR;
+          const isMidi = sameUuid(c.uuid, BLE_MIDI_CHAR);
           c.addEventListener('characteristicvaluechanged', (e) => this.onPacket(new Uint8Array(e.target.value.buffer, e.target.value.byteOffset, e.target.value.byteLength), c.uuid, isMidi));
           try { await c.startNotifications(); notifies++; } catch (e) { this.log(`    (notifications refusées : ${e.message})`); }
         }
         if (c.properties.read && !c.properties.notify) { try { const v = new Uint8Array((await c.readValue()).buffer); const l = `    lecture : ${hex(v)}  « ${new TextDecoder().decode(v).replace(/[^\x20-\x7e]/g, '.')} »`; this.log(l); this.summary.push(l); } catch (e) { /* */ } }
       }
     }
-    this.mode = services.some((s) => s.uuid === BLE_MIDI_SERVICE) ? 'midi' : 'raw'; this.retries = 0;
+    this.mode = services.some((s) => sameUuid(s.uuid, BLE_MIDI_SERVICE)) ? 'midi' : 'raw'; this.retries = 0;
     this.log(this.mode === 'midi'
       ? '✔ MIDI Bluetooth standard détecté : le RM-808 est utilisable directement (assistant / Learn).'
       : notifies ? `Protocole propriétaire : ${notifies} flux écouté(s). Touche les contrôles — ils s'affichent ci-dessous et se règlent avec l'assistant / le Learn.`
@@ -105,7 +132,7 @@ export class BleLink {
   onPacket(u8, uuid, isMidi) {
     const name = this.device?.name || 'BLE';
     if (isMidi) { for (const msg of decodeBleMidi(u8)) this.midi.handle(msg, { name: name + ' (BLE)' }); return; }
-    this.decoder.feed(`${name} brut ${uuid.slice(4, 8)}`, uuid.slice(4, 8), u8);
+    this.decoder.feed(`${name} ${shortId(uuid)}`, shortId(uuid), u8);
   }
 }
 
