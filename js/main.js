@@ -18,6 +18,17 @@ const decoder = new RawDecoder(midi); decoder.mode = db.ls.get('rawMode', 'auto'
 const ble = new BleLink(midi, (line) => logLine('🔵 ' + line), decoder);
 const hid = new HidLink((line) => logLine('🟣 ' + line), decoder);
 const pads = new GamepadLink(midi, (line) => logLine(line));
+// Keys coming from the RM-808 (it is a Bluetooth keyboard): same event whether they arrive through the system keyboard or through Bluetooth direct.
+const keysDown = new Map();
+function keyEvent(code, down, input, rawHex) {
+  const t = performance.now(), was = keysDown.get(code);
+  if (down) { if (was && t - was < 300) return; if (was) midi.dispatch({ type: 'noteoff', ch: 0, num: 0, val: 0, key: `key:${code}`, input }); keysDown.set(code, t); }
+  else { if (!was) return; keysDown.delete(code); }
+  midi.dispatch({ type: down ? 'noteon' : 'noteoff', ch: 0, num: 0, val: down ? 127 : 0, key: `key:${code}`, input, rawHex, keyName: code });
+}
+decoder.onKey = keyEvent;
+/** True when keys must be reserved for the RM-808 (no computer-keyboard shortcuts / notes). */
+const kbdCtrl = () => db.ls.get('kbdCtrl', null) ?? (decoder.kbdDetected || matchMedia('(pointer: coarse)').matches || Object.keys(midi.map).filter((k) => k.startsWith('key:')).length >= 8);
 let seq;
 
 // ---------------------------------------------------------------- state
@@ -823,16 +834,13 @@ function keyboard(part) {
 }
 const heldKeys = new Map();
 function onKey(e, down) {
-  if (e.target.matches('input, textarea, select')) return;
-  // Keyboard-type controllers (Bluetooth HID): every key is learnable / mappable like a MIDI control.
-  if (!e.repeat && e.code && e.code !== 'Escape') {
-    const key = `key:${e.code}`;
-    if (S.tab === 'midi' || midi.learnTarget || midi.map[key]) {
-      const m = { type: down ? 'noteon' : 'noteoff', ch: 0, num: e.keyCode, val: down ? 127 : 0, key, input: 'Clavier / HID « ' + e.key + ' »' };
-      if (midi.learnTarget && !down) return;
-      if (midi.learnTarget || midi.map[key]) { e.preventDefault(); midi.dispatch(m); return; }
-      if (down) logLine(`${m.input} · ${e.code}`);
-    }
+  if (e.target.matches?.('input, textarea')) return;
+  // The RM-808 is a Bluetooth keyboard: its keys are learnable / mappable like MIDI controls.
+  const code = e.code && e.code !== 'Unidentified' ? e.code : 'k_' + e.key, mapped = midi.map[`key:${code}`], reserved = kbdCtrl() || mapped || midi.learnTarget;
+  if ((code !== 'Escape' || kbdCtrl()) && (reserved || S.tab === 'midi')) {
+    if (reserved) e.preventDefault();
+    if (!e.repeat) keyEvent(code, down, 'Clavier');
+    if (reserved) return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === 'Shift') { S.shift = down; S.shiftUsed = true; refreshDevice(); return; }
@@ -936,7 +944,7 @@ function renderSong() {
 // ---------------------------------------------------------------- MIDI
 const monitorLog = [];
 function logLine(line) {
-  monitorLog.unshift(line); monitorLog.length = Math.min(monitorLog.length, 200);
+  monitorLog.unshift(line); monitorLog.length = Math.min(monitorLog.length, 500);
   const mon = document.getElementById('midiMon'); if (mon) mon.textContent = monitorLog.join('\n');
 }
 async function connectBle(all = false) {
@@ -953,8 +961,8 @@ function diagnosticReport() {
   return ['=== Rapport RM-808 Studio ===', new Date().toISOString(), 'Navigateur : ' + navigator.userAgent,
     `Web MIDI : ${midi.supported ? 'oui' : 'non'} (${midi.inputs.map((i) => i.name).join(', ') || 'aucune entrée'})`,
     `Bluetooth web : ${ble.supported ? 'oui' : 'non'} · connecté : ${ble.connected ? ble.mode : 'non'}`, `WebHID : ${hid.supported ? 'oui' : 'non'} · Manettes : ${pads.count}`,
-    `Décodage brut : ${decoder.mode} · Messages reçus : ${msgCount} · Assignations : ${Object.keys(midi.map).length}`, ...ble.summary, '--- Assignations ---',
-    ...Object.entries(midi.map).map(([k, e]) => `${k} → ${e.id}`), '--- Moniteur (plus récent en premier) ---', ...monitorLog.slice(0, 80)].join('\n');
+    `Clavier RM-808 : ${decoder.kbdDetected ? 'détecté' : 'non détecté'} · touches réservées : ${kbdCtrl() ? 'oui' : 'non'}`, `Décodage brut : ${decoder.mode} · Messages reçus : ${msgCount} · Assignations : ${Object.keys(midi.map).length}`, ...ble.summary, '--- Assignations ---',
+    ...Object.entries(midi.map).map(([k, e]) => `${k} → ${e.id}`), '--- Moniteur (plus récent en premier) ---', ...monitorLog.slice(0, 300)].join('\n');
 }
 async function copyReport() {
   const txt = diagnosticReport();
@@ -974,7 +982,7 @@ function setLearn(on) {
 }
 function routeMidi(m) {
   lastMsgAt = performance.now(); msgCount++; document.querySelectorAll('.rxdot').forEach((d) => { d.classList.add('on'); clearTimeout(d._t); d._t = setTimeout(() => d.classList.remove('on'), 150); });
-  logLine(m.rawHex ? `${m.input} · [${m.rawHex}]${m.learned ? '  ✔ appris → ' + m.learned : ''}` : `${m.input || ''} · ${m.type}${m.ch ? ' ch' + m.ch : ''}${m.num != null ? ' #' + m.num : ''}${m.val != null ? ' = ' + m.val : ''}${m.learned ? '  ✔ appris → ' + m.learned : ''}`);
+  logLine(m.keyName ? `${m.input} · touche ${m.keyName} ${m.type === 'noteon' ? '▼' : '▲'}${m.rawHex ? '  [' + m.rawHex + ']' : ''}${midi.map[m.key] ? '  → ' + midi.map[m.key].id : ''}${m.learned ? '  ✔ appris → ' + m.learned : ''}` : m.rawHex ? `${m.input} · [${m.rawHex}]${m.learned ? '  ✔ appris → ' + m.learned : ''}` : `${m.input || ''} · ${m.type}${m.ch ? ' ch' + m.ch : ''}${m.num != null ? ' #' + m.num : ''}${m.val != null ? ' = ' + m.val : ''}${m.learned ? '  ✔ appris → ' + m.learned : ''}`);
   if (m.learned) return;
   if (m.type === 'start' && S.followClock) { if (!seq.playing) togglePlay(); return; }
   if (m.type === 'stop' && S.followClock) { if (seq.playing) togglePlay(); return; }
@@ -991,6 +999,7 @@ function routeMidi(m) {
     return;
   }
   // Unmapped notes → instrument
+  if (!m.ch) return; // only real MIDI notes are played as an instrument
   if (m.type === 'noteon' || m.type === 'noteoff') {
     const route = S.unmapped; const on = m.type === 'noteon';
     if (route === 'lead') on ? engine.leadSynth.keyDown(m.num, m.val / 127) : engine.leadSynth.keyUp(m.num);
@@ -1016,10 +1025,11 @@ function renderMidi() {
         ble.connected ? button('Déconnecter', () => { ble.disconnect(); setTimeout(() => { midiStatus(); renderMidi(); }, 300); }) : null,
         ble.supported && !ble.connected ? button('🔵 Connecter le RM-808', () => connectBle(false), { cls: 'accent' }) : null, ble.supported && !ble.connected ? button('Tous les appareils…', () => connectBle(true)) : null),
       way(midi.supported, midi.inputs.length > 0, 'MIDI (USB ou Bluetooth appairé au système)', midi.inputs.length ? 'Entrées : ' + midi.inputs.map((i) => i.name).join(', ') : midi.supported ? 'Aucune entrée vue. Branche le RM-808 en USB, ou appaire-le en MIDI Bluetooth dans le système (Mac : Configuration audio et MIDI).' : 'Indisponible dans ce navigateur (normal sur iPhone/iPad).'),
-      way(true, Object.keys(midi.map).some((k) => k.startsWith('key:')), 'Clavier Bluetooth', 'Si le RM-808 est connecté dans les réglages Bluetooth et « tape » des touches : appuie sur ses boutons ici, ils s\'affichent dans le moniteur et s\'assignent.'),
+      way(true, decoder.kbdDetected || Object.keys(midi.map).some((k) => k.startsWith('key:')), 'Clavier Bluetooth ← le RM-808 fonctionne comme ça', 'Chaque bouton du RM-808 envoie une touche de clavier. Il suffit qu\'il soit connecté dans les réglages Bluetooth de l\'appareil (ça marche aussi dans Safari). Bluetooth direct en plus = toutes les touches sont reçues.',
+        toggle('Touches réservées au RM-808', kbdCtrl(), (x) => { db.ls.set('kbdCtrl', x); toast(x ? 'Les raccourcis du clavier d\'ordinateur sont désactivés' : 'Raccourcis du clavier d\'ordinateur réactivés'); })),
       way(hid.supported, hid.connected, 'HID direct (ordinateur)', hid.connected ? `Connecté à « ${hid.device.productName} ».` : hid.supported ? 'Pour un RM-808 appairé à l\'ordinateur ou branché en USB qui n\'apparaît pas en MIDI.' : 'Indisponible ici (Chrome/Edge sur ordinateur uniquement).', hid.supported && !hid.connected ? button('🟣 Connecter en HID', connectHid) : null),
       way(pads.supported, pads.count > 0, 'Manette de jeu', pads.count ? 'Manette détectée : ses boutons et axes sont assignables.' : 'Détection automatique : appuie sur un bouton du RM-808 si le système le voit comme une manette.')),
-    h('div', { class: 'row' }, h('label', {}, 'Décodage du protocole propriétaire : ', select([['auto', 'Automatique'], ['event', 'Événements (identifiant + valeur)'], ['state', 'État complet (compare les paquets)']], decoder.mode, (x) => { decoder.mode = x; db.ls.set('rawMode', x); })),
+    h('div', { class: 'row' }, h('label', {}, 'Décodage du protocole propriétaire : ', select([['auto', 'Automatique'], ['kbd', 'Clavier HID'], ['event', 'Événements (identifiant + valeur)'], ['state', 'État complet (compare les paquets)']], decoder.mode, (x) => { decoder.mode = x; db.ls.set('rawMode', x); })),
       h('span', { class: 'hint' }, 'Si un potard ou un pad est mal reconnu en Bluetooth direct, change ce réglage puis refais l\'assistant.'))));
   const inputs = [['all', 'Toutes les entrées'], ...midi.inputs.map((i) => [i.id, i.name])];
   v.append(h('div', { class: 'bar' }, h('b', {}, 'MIDI'),
@@ -1136,7 +1146,7 @@ function renderHelp() {
   <li>L'onglet <b>MIDI</b> liste <b>toutes les façons de brancher</b> le RM-808 (Bluetooth direct, MIDI, clavier Bluetooth, HID, manette) avec leur état, se reconnecte tout seul, et propose <b>📋 Copier le rapport</b> pour m'envoyer ce que l'appareil émet.</li>
   <li>Onglet <b>MIDI</b> → regarde le <b>moniteur</b> : tu vois ce que chaque potard / pad envoie.</li>
   <li><b>Le plus simple : 🔵 Connexion Bluetooth directe</b> (onglet MIDI) — ferme d'abord l'appli X808, puis « Connecter le RM-808 ». Marche dans Chrome/Edge (ordi, Android) et dans le navigateur <b>Bluefy</b> sur iPad, sans aucun réglage système.</li>
-  <li><b>Si le RM-808 se connecte comme un clavier Bluetooth</b> (il apparaît connecté dans les réglages Bluetooth de l'iPad/iPhone et ses boutons tapent des touches) : laisse-le connecté au système, ouvre l'onglet MIDI, appuie sur ses boutons — les touches s'affichent dans le moniteur et se règlent avec le Learn / l'assistant comme du MIDI.</li>
+  <li><b>Le RM-808 est un clavier Bluetooth</b> : chacun de ses boutons envoie une touche. Connecte-le dans les réglages Bluetooth de l'appareil, ouvre l'onglet MIDI et lance l'assistant : chaque bouton s'assigne en un appui. L'option « Touches réservées au RM-808 » empêche ses boutons de déclencher les raccourcis du clavier d'ordinateur.</li>
   <li>Lance <b>🧭 Assistant RM-808</b> : il te demande de toucher chaque contrôle un par un et les assigne au contrôleur virtuel. Les contrôles qui n'envoient rien peuvent être passés.</li>
   <li><b>Mode Learn</b> : n'importe quel bouton/potard de l'appli (synthé, effets, pistes…) peut être assigné à un contrôle du RM-808. Les potards sans fin (encodeurs) : passe le mode en « Relatif ».</li></ul>
   <h3>Jouer sans le RM-808 (tablette, téléphone, souris)</h3>
@@ -1178,9 +1188,9 @@ async function boot() {
   randomGroove();
   buildShell(); renderAll(); showTab(db.ls.get('tab', matchMedia('(pointer: coarse)').matches ? 'play' : 'device')); drawScope();
   try { navigator.wakeLock?.request('screen').catch(() => {}); } catch (e) { /* optional */ }
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') setLearn(false); onKey(e, true); });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !kbdCtrl()) setLearn(false); onKey(e, true); });
   window.addEventListener('keyup', (e) => onKey(e, false));
-  pads.onChange = hid.onChange = ble.onChange = () => { midiStatus(); if (S.tab === 'midi') renderMidi(); }; pads.start();
+  decoder.onKbd = pads.onChange = hid.onChange = ble.onChange = () => { midiStatus(); if (S.tab === 'midi') renderMidi(); }; pads.start();
   midi.listeners.add(routeMidi); midi.statusListeners.add(() => { midiStatus(); if (S.tab === 'midi') renderMidi(); });
   await midi.init(); midiStatus();
 }
@@ -1190,4 +1200,4 @@ document.getElementById('start').addEventListener('click', async (e) => {
   try { await boot(); document.getElementById('splash').remove(); }
   catch (err) { console.error(err); document.getElementById('splashMsg').textContent = 'Erreur : ' + err.message; }
 });
-window.__rm808 = { S, engine, midi, ble, decoder, diagnosticReport, get seq() { return seq; } };
+window.__rm808 = { S, engine, midi, ble, decoder, keyEvent, kbdCtrl, diagnosticReport, get seq() { return seq; } };
