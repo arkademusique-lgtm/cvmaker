@@ -142,24 +142,102 @@ function fxToggle(which) {
   if (!fx) { toast(`Assigne un effet à ${which.toUpperCase()} dans l'onglet Effets`); return; }
   fx.setEnabled(!fx.enabled); renderFx(); refreshDevice(); toast(`${fx.def.name} ${fx.enabled ? 'ON' : 'OFF'}`);
 }
-function clearPress() { S.clearHeld = true; S.clearUsed = false; S.clearT = performance.now(); }
+function clearPress() {
+  if (sh()) { useShift(); pushUndo(); S.patterns[S.cur] = emptyPattern(pat().name); refreshPattern(); return toast('Pattern effacé'); }
+  S.clearHeld = true; S.clearUsed = false; S.clearT = performance.now();
+}
 function clearRelease() {
   if (!S.clearHeld) return; S.clearHeld = false;
   if (S.clearUsed) return;
   const p = pat();
-  if (performance.now() - S.clearT > 900) { S.patterns[S.cur] = emptyPattern(p.name); toast('Pattern effacé'); }
+  if (performance.now() - S.clearT > 900) { pushUndo(); S.patterns[S.cur] = emptyPattern(p.name); toast('Pattern effacé'); }
   else { clearTrack(S.sel); toast(`${TRACKS[S.sel]} effacé`); }
   refreshSteps(); renderRolls();
 }
-function clearTrack(i) { const p = pat(); if (i < DRUM_TRACKS) p.drums[i].fill(0); else p.bass.forEach((b) => (b.on = false)); refreshSteps(); }
+function clearTrack(i) { pushUndo(); const p = pat(); if (i < DRUM_TRACKS) p.drums[i].fill(0); else p.bass.forEach((b) => (b.on = false)); refreshSteps(); }
 
-// pots: knob i in current pots mode
+// ---------------------------------------------------------------- SHIFT layer (hold MENU) & shortcuts
+const sh = () => S.shift || S.shiftLock;
+const useShift = () => { S.shiftUsed = true; };
+const synthMode = () => S.keyMode === 'note' || S.keyMode === 'bass';
+const partForMode = () => (S.keyMode === 'bass' ? 'bass' : 'lead');
+const undoStack = [];
+function pushUndo() { undoStack.push([S.cur, JSON.stringify(pat())]); if (undoStack.length > 40) undoStack.shift(); }
+function undo() { const u = undoStack.pop(); if (!u) return toast('Rien à annuler'); S.patterns[u[0]] = JSON.parse(u[1]); S.cur = u[0]; refreshPattern(); toast('Annulé ↩'); }
+let taps = [];
+function tapTempo() {
+  const n = performance.now(); taps = taps.filter((t) => n - t < 2500); taps.push(n);
+  if (taps.length < 2) return toast('Tap… encore');
+  setBpm(60000 / ((taps[taps.length - 1] - taps[0]) / (taps.length - 1))); toast(`Tempo ${S.bpm}`);
+}
+function setSwing(v) { S.swing = clamp(v, 0, 0.75); seq.swing = S.swing; controls.get('hdr.swing')?.el.setValue(S.swing, true); toast(`Swing ${Math.round(S.swing * 100)}%`); }
+function shiftOct(d) {
+  if (S.keyMode === 'bass') { S.bassOctave = clamp(S.bassOctave + d, 0, 6); toast('Octave basse : C' + S.bassOctave); }
+  else { S.octave = clamp(S.octave + d, 0, 7); toast('Octave synthé : C' + S.octave); }
+}
+function copyPattern() { S.clip = deepClone(pat()); toast(`Pattern ${S.cur + 1} copié`); }
+function pastePattern() { if (!S.clip) return toast('Rien à coller'); pushUndo(); S.patterns[S.cur] = deepClone(S.clip); refreshPattern(); toast('Collé'); }
+function duplicatePattern() { const n = (S.cur + 1) % 16; S.patterns[n] = deepClone(pat()); S.patterns[n].name = 'P' + (n + 1); S.cur = n; S.queued = null; refreshPattern(); toast(`Dupliqué → pattern ${n + 1}`); }
+function fillTrack(n) {
+  pushUndo(); const p = pat();
+  for (let st = 0; st < 16; st++) { const on = st % n === 0; if (S.sel < DRUM_TRACKS) p.drums[S.sel][st] = on ? 1 : 0; else Object.assign(p.bass[st], { on, note: p.bass[st].noteSet ? p.bass[st].note : S.lastBassNote }); }
+  refreshSteps(); renderRolls(); toast(`${TRACKS[S.sel]} : 1 pas sur ${n}`);
+}
+function cycleFx(which) { const l = engine.rack.list; if (!l.length) return; const fx = l[(l.findIndex((f) => f.id === S[which]) + 1) % l.length]; S[which] = fx.id; renderFx(); refreshDevice(); toast(`${which.toUpperCase()} → ${fx.def.name}`); }
+async function quickSave() { await db.put('projects', { id: S.projectName, ...serialize(), date: Date.now() }); renderProject(); toast(`Projet « ${S.projectName} » enregistré`); }
+function restart() { if (seq.playing) togglePlay(); togglePlay(); }
+function randomSound() { const part = partForMode(), sy = synthOf(part); sy.setPatch(randomPatch(part)); S[part] = sy.patch; renderSynth(part); refreshDevice(); toast('Son aléatoire : ' + (part === 'bass' ? 'basse' : 'synthé')); }
+function nextTab() { const i = TABS.findIndex(([k]) => k === S.tab); showTab(TABS[(i + 1) % TABS.length][0]); }
+function cycleMode() { setKeyMode({ step: 'pattern', pattern: 'note', note: 'bass', bass: 'step' }[S.keyMode]); toast('Mode : ' + S.keyMode.toUpperCase()); }
+// MENU held + step key 1..16
+const SHORTCUTS = [
+  ['🎲 Groove', () => { pushUndo(); randomGroove(); refreshPattern(); }], ['🎲 Kit', () => changeKit(S.kits.length - S.kitIdx)], ['Copier', copyPattern], ['Coller', pastePattern],
+  ['Annuler', undo], ['Tap tempo', tapTempo], ['Swing −', () => setSwing(S.swing - 0.05)], ['Swing +', () => setSwing(S.swing + 0.05)],
+  ['Preset ◀', () => { stepPreset(partForMode(), -1); refreshDevice(); }], ['Preset ▶', () => { stepPreset(partForMode(), 1); refreshDevice(); }], ['🎲 Son', randomSound], ['Octave −', () => shiftOct(-1)],
+  ['Octave +', () => shiftOct(1)], ['Dupliquer', duplicatePattern], ['⏺ Audio', () => toggleRecord()], ['💾 Sauver', quickSave],
+];
+function menuPress() {
+  if (S.shiftLock) { S.shiftLock = false; S.menuSkip = true; toast('SHIFT déverrouillé'); return refreshDevice(); }
+  if (S.shift) { S.shift = false; return refreshDevice(); } // controller that never sends a release
+  S.shift = true; S.shiftUsed = false; S.shiftT = performance.now(); refreshDevice();
+}
+function menuRelease() {
+  if (S.menuSkip) { S.menuSkip = false; return; }
+  if (!S.shift) return; S.shift = false;
+  if (!S.shiftUsed) { if (performance.now() - S.shiftT > 600) { S.shiftLock = true; toast('SHIFT verrouillé — appuie sur MENU pour quitter'); } else nextTab(); }
+  refreshDevice();
+}
+function kitNav(d) { const alt = sh(); if (alt) useShift(); if (alt !== synthMode()) { stepPreset(partForMode(), d); refreshDevice(); } else changeKit(d); }
+function patNav(d) {
+  const alt = sh(); if (alt) useShift();
+  if (synthMode() && !alt) shiftOct(d); else if (!synthMode() && alt) (d < 0 ? undo() : duplicatePattern()); else selectPattern(S.cur + d);
+}
+
+// pots: what the 12 knobs control depends on the layer (SHIFT = pan, NOTE = synth macros, KEY BASS = bass macros)
 const POT_LABEL = { level: 'LEVEL', tune: 'TUNING', tone: 'TONE', decay: 'DECAY' };
+const MACROS = [['Cutoff', 'filter.cutoff', 0, 1], ['Réso', 'filter.res', 0.1, 20], ['Env filt', 'filter.envAmt', -1, 1], ['Drive', 'filter.drive', 0, 1], ['Attack', 'ampEnv.a', 0.001, 2], ['Decay', 'ampEnv.d', 0.01, 3],
+  ['Sustain', 'ampEnv.s', 0, 1], ['Release', 'ampEnv.r', 0.01, 4], ['Wave A', 'oscA.pos', 0, 1], ['Détune', 'oscA.detune', 0, 1], ['LFO', 'lfo1.depth', 0, 1], ['Volume', 'volume', 0, 1.2]];
+const potLayer = () => (sh() ? 'pan' : S.keyMode === 'note' ? 'lead' : S.keyMode === 'bass' ? 'bass' : 'trk');
+const potLabel = (i) => { const L = potLayer(); return L === 'pan' ? 'PAN' : L === 'trk' ? POT_LABEL[S.pots] : MACROS[i][0].toUpperCase(); };
 function potGet(i) {
+  const L = potLayer();
+  if (L === 'pan') return ((i < DRUM_TRACKS ? S.kit.tracks[i].pan : S.bass.pan) + 1) / 2;
+  if (L !== 'trk') { const [, path, min, max] = MACROS[i]; return clamp((getPath(S[L], path) - min) / (max - min), 0, 1); }
   if (i < DRUM_TRACKS) return S.kit.tracks[i][S.pots];
   const b = S.bass; return { level: b.volume, tune: (b.filter.res - 0.1) / 25, tone: b.filter.cutoff, decay: clamp(b.filtEnv.d / 1.5, 0, 1) }[S.pots];
 }
 function potSet(i, v) {
+  const L = potLayer();
+  if (L === 'pan') {
+    useShift(); const pan = v * 2 - 1;
+    if (i < DRUM_TRACKS) { S.kit.tracks[i].pan = pan; applyKitMix(); controls.get(`trk.${i}.pan`)?.el.setValue(pan, true); } else { setPatchParam('bass', 'pan', pan); controls.get('bass.pan')?.el.setValue(pan, true); }
+    return;
+  }
+  if (L !== 'trk') {
+    const [, path, min, max] = MACROS[i], val = min + v * (max - min);
+    setPatchParam(L, path, val); controls.get(`${L}.${path}`)?.el.setValue(val, true); if (path.endsWith('.pos')) drawWaves();
+    return;
+  }
   if (i < DRUM_TRACKS) {
     S.kit.tracks[i][S.pots] = v;
     if (S.pots === 'level') applyKitMix();
@@ -219,6 +297,27 @@ function drawScope() {
   loop();
 }
 
+
+const CHEATS = `<div class="cheatgrid">
+<div><h4>MENU = touche SHIFT ⇧</h4><ul>
+<li><b>MENU bref</b> : onglet suivant</li><li><b>MENU maintenu + …</b> : raccourci</li><li><b>MENU long seul</b> : verrouille SHIFT (re-MENU pour quitter)</li><li>Au clavier d'ordi : touche <b>Maj</b></li></ul>
+<h4>⇧ + touches de pas 1 → 16</h4><ol>
+<li>🎲 Groove aléatoire</li><li>🎲 Nouveau kit</li><li>Copier le pattern</li><li>Coller</li><li>Annuler ↩</li><li>Tap tempo</li><li>Swing −</li><li>Swing +</li>
+<li>Preset ◀</li><li>Preset ▶</li><li>🎲 Son aléatoire</li><li>Octave −</li><li>Octave +</li><li>Dupliquer le pattern → suivant</li><li>⏺ Enregistrer l'audio (WAV)</li><li>💾 Sauver le projet</li></ol></div>
+<div><h4>⇧ + autres contrôles</h4><ul>
+<li><b>Pad du haut</b> : mute / unmute la piste</li><li><b>Pad du bas</b> : solo</li><li><b>12 potards</b> : panoramique de chaque piste</li><li><b>TEMPO</b> : swing</li>
+<li><b>▶/❚❚</b> : repartir du début</li><li><b>● REC</b> : enregistrer l'audio</li><li><b>HOLD TO CLEAR</b> : effacer tout le pattern</li>
+<li><b>LOOPER 1/2/4/8</b> : remplir la piste (1 pas sur 1, 2, 4, 8)</li><li><b>FX1 / FX2</b> : changer l'effet assigné</li>
+<li><b>PATTERN &lt;</b> : annuler · <b>PATTERN &gt;</b> : dupliquer</li><li><b>DRUM KIT &lt; &gt;</b> : preset de synthé</li>
+<li><b>STEP / BASS / MIXER / FX</b> : ouvrir Séquenceur / Basse / Synthé / Effets</li></ul>
+<h4>Sans SHIFT</h4><ul><li><b>Double-appui sur un pas</b> : accent</li><li><b>HOLD TO CLEAR + pad</b> : efface cette piste</li><li><b>LOOPER maintenu</b> : répétition momentanée</li></ul></div>
+<div><h4>Mode NOTE (synthé) et KEY BASS</h4><ul>
+<li><b>16 touches</b> : jouer les notes (● REC + lecture = enregistre)</li><li><b>PATTERN &lt; &gt;</b> : octave − / +</li><li><b>DRUM KIT &lt; &gt;</b> : preset précédent / suivant</li>
+<li><b>12 potards</b> = macros du son : Cutoff · Réso · Env filtre · Drive · Attack · Decay · Sustain · Release · Wave · Détune · LFO · Volume</li>
+<li><b>Pads</b> : la batterie reste jouable</li><li>⇧ + PATTERN / DRUM KIT : retrouvent leur rôle normal</li></ul>
+<h4>Clavier d'ordinateur</h4><ul><li><b>Espace</b> lecture · <b>Maj+Espace</b> début</li><li><b>← →</b> pattern · <b>↑ ↓</b> kit</li><li><b>R</b> rec · <b>M</b> mute · <b>I</b> mode des touches</li>
+<li><b>N</b> groove · <b>B</b> kit · <b>C / V</b> copier / coller · <b>Q</b> annuler</li><li><b>A W S E D F T G Y H U J K</b> notes · <b>Z / X</b> octave</li></ul></div></div>`;
+
 // ---------------------------------------------------------------- virtual RM-808 (device view)
 const STEP_COLORS = (i) => (i < 4 ? 'red' : i < 8 ? 'orange' : i < 12 ? 'yellow' : 'white');
 let devEls = {};
@@ -236,6 +335,7 @@ function devBtn(label, id, onPress, onRelease, cls = '') {
 
 function stepKeyPress(k, v = 1) {
   const p = pat();
+  if (sh()) { useShift(); return SHORTCUTS[k][1](); }
   if (S.keyMode === 'pattern') return selectPattern(k);
   if (S.keyMode === 'note') {
     const n = S.octave * 12 + 12 + k; engine.leadSynth.keyDown(n, v);
@@ -248,15 +348,20 @@ function stepKeyPress(k, v = 1) {
     return;
   }
   if (S.clearHeld) { S.clearUsed = true; }
-  toggleStep(S.sel, k, false);
+  const now = performance.now(), lt = S.lastTap; // double-tap a step = accent
+  if (lt && lt.k === k && lt.tr === S.sel && now - lt.t < 350) { S.lastTap = null; toggleStep(S.sel, k, true); }
+  else { S.lastTap = { k, tr: S.sel, t: now }; toggleStep(S.sel, k, false); }
   renderRolls();
 }
 function stepKeyRelease(k) {
   if (S.keyMode === 'note') engine.leadSynth.keyUp(S.octave * 12 + 12 + k);
   if (S.keyMode === 'bass') engine.bassSynth.keyUp(S.bassOctave * 12 + 12 + k);
 }
-function padTop(i, v) { if (S.clearHeld) { S.clearUsed = true; clearTrack(i); toast(`${TRACKS[i]} effacé`); return; } trigger(i, v); }
+function padTop(i, v) {
+  if (sh()) { useShift(); toggleMute(i); return toast(`${TRACKS[i]} ${S.mutes[i] ? 'muté' : 'actif'}`); }
+  if (S.clearHeld) { S.clearUsed = true; clearTrack(i); toast(`${TRACKS[i]} effacé`); return; } trigger(i, v); }
 function padBot(i, v) {
+  if (sh()) { useShift(); S.solos[i] = !S.solos[i]; applyKitMix(); refreshDevice(); renderSeq(); return toast(`Solo ${TRACKS[i]} ${S.solos[i] ? 'ON' : 'OFF'}`); }
   if (S.clearHeld) { S.clearUsed = true; clearTrack(i); return; }
   if (S.padBot === 'mute') toggleMute(i); else { selectTrack(i); trigger(i, v * 0.8); }
 }
@@ -264,35 +369,35 @@ function padBot(i, v) {
 function renderDevice() {
   const v = views.device; v.innerHTML = ''; devEls = { pots: [], potLbl: [], top: [], bot: [], steps: [] };
   const knobs = h('div', { class: 'dev-knobs' },
-    knob({ label: 'TEMPO', min: 30, max: 300, value: S.bpm, def: 120, step: 1, fmt: (x) => x.toFixed(0), onInput: (x) => setBpm(x, 'dev.tempo'), learn: 'dev.tempo' }),
+    knob({ label: 'TEMPO', min: 30, max: 300, value: S.bpm, def: 120, step: 1, fmt: (x) => x.toFixed(0), onInput: (x) => { if (sh()) { useShift(); setSwing(((x - 30) / 270) * 0.75); controls.get('dev.tempo').el.setValue(S.bpm, true); } else setBpm(x, 'dev.tempo'); }, learn: 'dev.tempo' }),
     TRACKS.map((_, i) => { const k = knob({ label: '', min: 0, max: 1, value: potGet(i), def: 0.5, onInput: (x) => potSet(i, x), learn: `dev.pot.${i}` }); devEls.pots.push(k); return k; }));
   const pads = h('div', { class: 'dev-pads' },
     h('div', { class: 'padrow' }, TRACKS.map((_, i) => { const b = devBtn('', `dev.padTop.${i}`, (vv) => padTop(i, vv), null, 'pad'); devEls.top.push(b); return b; })),
     h('div', { class: 'padrow' }, TRACKS.map((_, i) => { const b = devBtn('', `dev.padBot.${i}`, (vv) => padBot(i, vv), null, 'pad'); devEls.bot.push(b); return b; })),
     h('div', { class: 'padrow labels' }, TRACKS.map((t) => h('span', {}, t.toUpperCase()))));
   const left = h('div', { class: 'dev-left' },
-    devBtn('▶/❚❚', 'dev.play', togglePlay, null, 'wide play-btn'),
-    devBtn('● REC', 'dev.rec', () => setRec(), null, 'wide rec-btn'),
+    devBtn('▶/❚❚', 'dev.play', () => (sh() ? (useShift(), restart()) : togglePlay()), null, 'wide play-btn'),
+    devBtn('● REC', 'dev.rec', () => (sh() ? (useShift(), toggleRecord()) : setRec()), null, 'wide rec-btn'),
     h('div', { class: 'spacer' }),
     devBtn('HOLD TO CLEAR', 'dev.clear', clearPress, clearRelease, 'small'),
     h('div', { class: 'row2' }, devBtn('STEP', 'dev.modeStep', () => setKeyMode('step'), null, 'small mode-step'), devBtn('KEY BASS', 'dev.modeBass', () => setKeyMode('bass'), null, 'small mode-bass')));
   const ctrl = h('div', { class: 'dev-ctrl' },
-    h('div', { class: 'grp' }, h('label', {}, 'DRUM KIT'), devBtn('<', 'dev.kitPrev', () => changeKit(-1)), devBtn('>', 'dev.kitNext', () => changeKit(1))),
-    h('div', { class: 'grp' }, h('label', {}, 'PATTERN'), devBtn('<', 'dev.patPrev', () => selectPattern(S.cur - 1)), devBtn('>', 'dev.patNext', () => selectPattern(S.cur + 1))),
-    h('div', { class: 'grp' }, devBtn('PATTERN / SONG', 'dev.patsong', () => { S.songMode = !S.songMode; refreshDevice(); renderSong(); }, null, 'small'), devBtn('MENU', 'dev.menu', () => { const i = TABS.findIndex(([k]) => k === S.tab); showTab(TABS[(i + 1) % TABS.length][0]); })),
+    h('div', { class: 'grp' }, h('label', {}, 'DRUM KIT'), devBtn('<', 'dev.kitPrev', () => kitNav(-1)), devBtn('>', 'dev.kitNext', () => kitNav(1))),
+    h('div', { class: 'grp' }, h('label', {}, 'PATTERN'), devBtn('<', 'dev.patPrev', () => patNav(-1)), devBtn('>', 'dev.patNext', () => patNav(1))),
+    h('div', { class: 'grp' }, devBtn('PATTERN / SONG', 'dev.patsong', () => { S.songMode = !S.songMode; refreshDevice(); renderSong(); }, null, 'small'), devBtn('MENU ⇧', 'dev.menu', menuPress, menuRelease, 'menu-btn')),
     h('div', { class: 'grp pots' }, h('label', {}, 'POTS MODE'),
       ...[['level', 'STEP', 'dev.potsLevel'], ['tune', 'BASS', 'dev.potsTune'], ['tone', 'MIXER', 'dev.potsTone'], ['decay', 'FX', 'dev.potsDecay']].map(([m, l, id]) =>
-        h('div', { class: 'potbtn' }, h('small', {}, POT_LABEL[m]), devBtn(l, id, () => setPots(m), null, `pots-${m}`)))));
+        h('div', { class: 'potbtn' }, h('small', {}, POT_LABEL[m]), devBtn(l, id, () => (sh() ? (useShift(), showTab({ level: 'seq', tune: 'bass', tone: 'lead', decay: 'fx' }[m])) : setPots(m)), null, `pots-${m}`)))));
   const steps = h('div', { class: 'dev-steps' }, Array.from({ length: 16 }, (_, k) => {
     const b = devBtn(String(k + 1), `dev.step.${k}`, (vv) => stepKeyPress(k, vv), () => stepKeyRelease(k), `step ${STEP_COLORS(k)}`);
     b.dataset.step = k; b.addEventListener('contextmenu', () => { if (S.keyMode === 'step') { toggleStep(S.sel, k, true); } });
     devEls.steps.push(b); return b;
   }));
   const right = h('div', { class: 'dev-right' },
-    h('label', {}, 'EFFECTS'), h('div', { class: 'row2' }, devBtn('FX1', 'dev.fx1', () => fxToggle('fx1'), null, 'fx1'), devBtn('FX2', 'dev.fx2', () => fxToggle('fx2'), null, 'fx2')),
+    h('label', {}, 'EFFECTS'), h('div', { class: 'row2' }, devBtn('FX1', 'dev.fx1', () => (sh() ? (useShift(), cycleFx('fx1')) : fxToggle('fx1')), null, 'fx1'), devBtn('FX2', 'dev.fx2', () => (sh() ? (useShift(), cycleFx('fx2')) : fxToggle('fx2')), null, 'fx2')),
     h('div', { class: 'row2' }, devBtn('STEP', 'dev.modeStep2', () => setKeyMode(S.keyMode === 'pattern' ? 'step' : S.keyMode === 'step' ? 'pattern' : 'step'), null, 'mode-step2'), devBtn('NOTE', 'dev.modeNote', () => setKeyMode('note'), null, 'mode-note')),
     h('label', {}, 'LOOPER'),
-    [1, 2, 4, 8].map((n) => { let t0; const b = devBtn(String(n), `dev.loop.${n}`, () => { t0 = performance.now(); setLooper(n); }, () => { if (performance.now() - t0 > 350 && S.looper === n) setLooper(n); }, 'loop'); b.dataset.looper = n; return b; }));
+    [1, 2, 4, 8].map((n) => { let t0; const b = devBtn(String(n), `dev.loop.${n}`, () => { if (sh()) { useShift(); t0 = Infinity; return fillTrack(n); } t0 = performance.now(); setLooper(n); }, () => { if (performance.now() - t0 > 350 && S.looper === n) setLooper(n); }, 'loop'); b.dataset.looper = n; return b; }));
   const status = h('div', { class: 'dev-status', id: 'devStatus' });
   const opts = h('div', { class: 'dev-opts' },
     h('label', {}, 'Rangée basse des pads : ', select([['select', 'Sélectionner la piste'], ['mute', 'Mute / unmute']], S.padBot, (x) => { S.padBot = x; db.ls.set('padBot', x); })),
@@ -300,15 +405,19 @@ function renderDevice() {
     h('label', {}, 'Octave KEY BASS : ', select([0, 1, 2, 3, 4].map((o) => [String(o), 'C' + o]), String(S.bassOctave), (x) => (S.bassOctave = +x))),
     button('🔵 Connecter le RM-808 (Bluetooth)', connectBle, { cls: 'accent' }),
     button('🧭 Assistant de mapping RM-808', () => startWizard(), { cls: 'accent' }),
-    h('span', { class: 'hint' }, 'Astuce : clic droit (ou appui long) sur une touche de pas = accent. Tout bouton ou potard de l\'appli peut être assigné à ton RM-808 via l\'onglet MIDI.'));
+    h('span', { class: 'hint' }, 'Astuce : double-appui (ou clic droit) sur une touche de pas = accent. Maintiens MENU (ou Maj) pour les raccourcis. Tout bouton ou potard de l\'appli peut être assigné à ton RM-808 via l\'onglet MIDI.'));
   v.append(h('div', { class: 'device' },
     h('div', { class: 'dev-title' }, h('b', {}, 'RM-808'), h('span', {}, 'RHYTHM MAKER — contrôleur virtuel')),
-    knobs, h('div', { class: 'dev-mid' }, left, h('div', { class: 'dev-center' }, pads, ctrl, steps), right), status), opts);
+    knobs, h('div', { class: 'dev-mid' }, left, h('div', { class: 'dev-center' }, pads, ctrl, steps), right), status), opts,
+    h('details', { class: 'panel cheats', open: true, html: '<summary>⌨️ Raccourcis du RM-808</summary>' + CHEATS }));
   refreshDevice();
 }
 function refreshDevice() {
   if (!devEls.pots) return;
-  devEls.pots.forEach((k, i) => { k.setValue(potGet(i), true); k.querySelector('.knob-label')?.remove(); k.dataset.label = POT_LABEL[S.pots]; k.classList.toggle('muted', !audible(i)); });
+  devEls.pots.forEach((k, i) => { k.setValue(potGet(i), true); k.querySelector('.knob-label')?.remove(); k.dataset.label = potLabel(i); k.classList.toggle('muted', !audible(i)); });
+  document.body.classList.toggle('shift-on', sh());
+  devEls.steps.forEach((b, k) => { b.textContent = sh() ? SHORTCUTS[k][0] : String(k + 1); });
+  document.querySelectorAll('.menu-btn').forEach((b) => b.classList.toggle('on', sh()));
   devEls.bot.forEach((b, i) => { b.classList.toggle('sel', i === S.sel); b.classList.toggle('muted', !audible(i)); });
   document.querySelectorAll('.dbtn[class*="pots-"]').forEach((b) => b.classList.toggle('on', b.classList.contains('pots-' + S.pots)));
   for (const [m, c] of [['step', 'mode-step'], ['bass', 'mode-bass'], ['note', 'mode-note'], ['pattern', 'mode-step2']]) document.querySelectorAll('.' + c).forEach((b) => b.classList.toggle('on', S.keyMode === m));
@@ -317,7 +426,8 @@ function refreshDevice() {
   document.querySelectorAll('.dbtn.fx1').forEach((b) => b.classList.toggle('on', !!f1?.enabled));
   document.querySelectorAll('.dbtn.fx2').forEach((b) => b.classList.toggle('on', !!f2?.enabled));
   const st = document.getElementById('devStatus');
-  if (st) st.textContent = `Piste : ${TRACKS[S.sel]} · Mode touches : ${{ step: 'STEP (programmation)', pattern: 'PATTERN (choix 1-16)', note: 'NOTE (synthé)', bass: 'KEY BASS' }[S.keyMode]} · Potards : ${POT_LABEL[S.pots]} · Kit : ${S.kit.name} · Pattern ${S.cur + 1}${S.songMode ? ' · SONG' : ''}`;
+  const layer = { pan: 'PAN (SHIFT)', lead: 'SYNTHÉ (macros)', bass: 'BASSE (macros)', trk: POT_LABEL[S.pots] }[potLayer()];
+  if (st) st.textContent = `${sh() ? '⇧ SHIFT · ' : ''}Piste : ${TRACKS[S.sel]} · Mode touches : ${{ step: 'STEP (programmation)', pattern: 'PATTERN (choix 1-16)', note: 'NOTE (synthé)', bass: 'KEY BASS' }[S.keyMode]} · Potards : ${layer} · Kit : ${S.kit.name} · Pattern ${S.cur + 1}${S.songMode ? ' · SONG' : ''}`;
   refreshSteps(); refreshHeader();
 }
 function refreshSteps() {
@@ -601,8 +711,15 @@ function onKey(e, down) {
       if (down) logLine(`${m.input} · ${e.code}`);
     }
   }
-  if (down && e.code === 'Space') { e.preventDefault(); togglePlay(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Shift') { S.shift = down; S.shiftUsed = true; refreshDevice(); return; }
+  if (down && e.code === 'Space') { e.preventDefault(); e.shiftKey ? restart() : togglePlay(); return; }
   if (e.repeat) return;
+  if (down) {
+    const act = { ArrowLeft: () => selectPattern(S.cur - 1), ArrowRight: () => selectPattern(S.cur + 1), ArrowUp: () => changeKit(-1), ArrowDown: () => changeKit(1),
+      r: () => setRec(), m: () => toggleMute(S.sel), n: SHORTCUTS[0][1], b: SHORTCUTS[1][1], c: copyPattern, v: pastePattern, q: undo, i: cycleMode, '?': () => showTab('help') }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+    if (act) { e.preventDefault(); act(); return; }
+  }
   const part = S.tab === 'bass' ? 'bass' : 'lead';
   const k = e.key.toLowerCase();
   if (down && (k === 'z' || k === 'x')) { if (part === 'lead') S.octave = clamp(S.octave + (k === 'x' ? 1 : -1), 0, 7); else S.bassOctave = clamp(S.bassOctave + (k === 'x' ? 1 : -1), 0, 7); toast('Octave ' + (part === 'lead' ? S.octave : S.bassOctave)); return; }
@@ -882,7 +999,7 @@ function renderHelp() {
   <ul><li><b>Kits</b> : 18 voix synthétisées (808/909, FM, zap, percs…), réglables, ou tes propres samples (glisser-déposer). Kits illimités, sauvegardables, exportables.</li>
   <li><b>Synthé</b> : 2 oscillateurs wavetable (15 tables + dessin libre + import de wavetables WAV façon Serum/Vital), unisson 9 voix, FM, sub, bruit, filtre multimode avec drive, 2 enveloppes, 2 LFO, LFO de wavetable, mono/glide, 25 presets d'instruments (cordes, piano FM, cloches, orgue, flûte, basses, leads, pads…) + aléatoire + presets perso.</li>
   <li><b>Effets</b> : rack illimité — distorsion, bitcrusher, filtre à LFO, EQ, chorus, flanger, phaser, delay ping-pong synchro, réverbe, compresseur, trémolo/auto-pan, trance gate, ring mod, tape wobble, élargisseur stéréo.</li></ul>
-  <h3>Raccourcis</h3><p>Espace = lecture · A W S E D F T G Y H U J K = notes · Z/X = octave · Échap = sortir du mode Learn</p></div>`;
+  <h3>Raccourcis</h3>${CHEATS}<p>Échap = sortir du mode Learn</p></div>`;
 }
 
 // ---------------------------------------------------------------- boot
