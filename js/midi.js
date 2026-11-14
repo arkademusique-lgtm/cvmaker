@@ -41,6 +41,10 @@ export class Midi {
   }
   handle(data, input) {
     const m = this.parse(data); m.raw = [...data]; m.input = input.name;
+    this.dispatch(m);
+  }
+  /** Entry point for already-parsed messages (Web MIDI, Bluetooth MIDI or raw Bluetooth). */
+  dispatch(m) {
     const fresh = !(this.lastLearn && this.lastLearn.key === m.key && performance.now() - this.lastLearn.t < 1200);
     if (this.learnTarget && fresh && (m.type === 'noteon' || m.type === 'cc' || m.type === 'pb' || m.type === 'pc')) {
       const target = this.learnTarget; this.learnTarget = null; this.lastLearn = { key: m.key, t: performance.now() };

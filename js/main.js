@@ -5,6 +5,7 @@ import { FX_TYPES } from './audio/fx.js';
 import { TABLES, tableOptions, framesAt, N as WT_N, setCustomFrames, importWavetable, exportUserTables, importUserTables } from './audio/wavetables.js';
 import { Sequencer, emptyPattern } from './sequencer.js';
 import { Midi } from './midi.js';
+import { BleLink } from './ble.js';
 import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
 import { PRESETS } from './presets.js';
 import * as db from './storage.js';
@@ -13,6 +14,7 @@ import { clamp, deepClone, noteName, uid, encodeWav, download, abToB64, b64ToAb,
 
 const engine = new Engine();
 const midi = new Midi();
+const ble = new BleLink(midi, (line) => logLine('🔵 ' + line));
 let seq;
 
 // ---------------------------------------------------------------- state
@@ -296,6 +298,7 @@ function renderDevice() {
     h('label', {}, 'Rangée basse des pads : ', select([['select', 'Sélectionner la piste'], ['mute', 'Mute / unmute']], S.padBot, (x) => { S.padBot = x; db.ls.set('padBot', x); })),
     h('label', {}, 'Octave NOTE : ', select([1, 2, 3, 4, 5, 6].map((o) => [String(o), 'C' + o]), String(S.octave), (x) => (S.octave = +x))),
     h('label', {}, 'Octave KEY BASS : ', select([0, 1, 2, 3, 4].map((o) => [String(o), 'C' + o]), String(S.bassOctave), (x) => (S.bassOctave = +x))),
+    button('🔵 Connecter le RM-808 (Bluetooth)', connectBle, { cls: 'accent' }),
     button('🧭 Assistant de mapping RM-808', () => startWizard(), { cls: 'accent' }),
     h('span', { class: 'hint' }, 'Astuce : clic droit (ou appui long) sur une touche de pas = accent. Tout bouton ou potard de l\'appli peut être assigné à ton RM-808 via l\'onglet MIDI.'));
   v.append(h('div', { class: 'device' },
@@ -681,6 +684,16 @@ function renderSong() {
 
 // ---------------------------------------------------------------- MIDI
 const monitorLog = [];
+function logLine(line) {
+  monitorLog.unshift(line); monitorLog.length = Math.min(monitorLog.length, 120);
+  const mon = document.getElementById('midiMon'); if (mon) mon.textContent = monitorLog.join('\n');
+}
+async function connectBle() {
+  if (!ble.supported) return toast('Bluetooth web indisponible : utilise Chrome/Edge (ordi, Android) ou Bluefy (iPad).');
+  showTab('midi');
+  try { const mode = await ble.connect(); midiStatus(); toast(mode === 'midi' ? 'RM-808 connecté en MIDI Bluetooth ✔' : 'Connecté — protocole propriétaire, voir le moniteur'); }
+  catch (e) { logLine('🔵 ✖ ' + e.message); toast('Connexion Bluetooth annulée ou impossible'); }
+}
 let learnMode = false;
 function setLearn(on) {
   learnMode = on;
@@ -693,9 +706,7 @@ function setLearn(on) {
   document.querySelectorAll('.learn-btn').forEach((b) => b.classList.toggle('on', on));
 }
 function routeMidi(m) {
-  monitorLog.unshift(`${m.input || ''} · ${m.type}${m.ch ? ' ch' + m.ch : ''}${m.num != null ? ' #' + m.num : ''}${m.val != null ? ' = ' + m.val : ''}${m.learned ? '  ✔ appris → ' + m.learned : ''}`);
-  monitorLog.length = Math.min(monitorLog.length, 60);
-  const mon = document.getElementById('midiMon'); if (mon) mon.textContent = monitorLog.join('\n');
+  logLine(m.rawHex ? `${m.input} · [${m.rawHex}]${m.learned ? '  ✔ appris → ' + m.learned : ''}` : `${m.input || ''} · ${m.type}${m.ch ? ' ch' + m.ch : ''}${m.num != null ? ' #' + m.num : ''}${m.val != null ? ' = ' + m.val : ''}${m.learned ? '  ✔ appris → ' + m.learned : ''}`);
   if (m.learned) return;
   if (m.type === 'start' && S.followClock) { if (!seq.playing) togglePlay(); return; }
   if (m.type === 'stop' && S.followClock) { if (seq.playing) togglePlay(); return; }
@@ -708,7 +719,7 @@ function routeMidi(m) {
       else if (m.type === 'noteon') c.setNorm(m.val / 127);
     } else if (m.type === 'noteon' || m.type === 'pc') c.trigger(m.val / 127 || 1);
     else if (m.type === 'noteoff') c.release && c.release();
-    else if (m.type === 'cc') { const prev = (midi.lastVal[m.key] ?? 0) >= 64, on = m.val >= 64; midi.lastVal[m.key] = m.val; if (on && !prev) c.trigger(m.val / 127); else if (!on && prev) c.release && c.release(); }
+    else if (m.type === 'cc') { const isOn = (x) => (m.rawLast != null ? x > 0 : x >= 64); const prev = isOn(midi.lastVal[m.key] ?? 0), on = isOn(m.rawLast ?? m.val); midi.lastVal[m.key] = m.rawLast ?? m.val; if (on && !prev) c.trigger(m.val / 127); else if (!on && prev) c.release && c.release(); }
     return;
   }
   // Unmapped notes → instrument
@@ -722,13 +733,17 @@ function routeMidi(m) {
 }
 function midiStatus() {
   const pill = document.getElementById('midiPill'); if (!pill) return;
-  if (!midi.supported) { pill.textContent = 'MIDI non supporté'; pill.className = 'midi-pill bad'; return; }
+  if (ble.connected) { pill.textContent = `🔵 ${ble.device.name || 'BLE'} (${ble.mode === 'midi' ? 'MIDI BLE' : 'brut'})`; pill.className = 'midi-pill ok'; return; }
+  if (!midi.supported) { pill.textContent = 'Web MIDI absent — utilise 🔵 Bluetooth'; pill.className = 'midi-pill bad'; return; }
   pill.textContent = midi.inputs.length ? `MIDI : ${midi.inputs.map((i) => i.name).join(', ')}` : 'MIDI : aucun appareil';
   pill.className = 'midi-pill ' + (midi.inputs.length ? 'ok' : '');
 }
 function renderMidi() {
   const v = views.midi; if (!v) return; v.innerHTML = '';
-  if (!midi.supported) v.append(h('div', { class: 'panel warn' }, h('b', {}, 'Ce navigateur ne supporte pas Web MIDI.'), h('p', {}, 'Sur iPad/iPhone, Safari ne gère pas le MIDI web : ouvre l\'appli dans un navigateur iOS compatible Web MIDI (ex. « Web MIDI Browser »). Sur ordinateur/Android : Chrome ou Edge. Tu peux quand même tout utiliser à la souris/au doigt.')));
+  v.append(h('div', { class: 'panel blebox' }, h('div', { class: 'ptitle' }, '🔵 CONNEXION BLUETOOTH DIRECTE AU RM-808',
+      ble.connected ? button('Déconnecter', () => { ble.disconnect(); setTimeout(() => { midiStatus(); renderMidi(); }, 300); }) : button('🔵 Connecter le RM-808', connectBle, { cls: 'accent' })),
+    h('p', {}, 'Allume le RM-808 et ', h('b', {}, 'ferme l\'appli X808'), ' (un appareil Bluetooth ne se connecte qu\'à une appli à la fois). Clique « Connecter », choisis le RM-808 dans la liste. Le moniteur indique s\'il parle MIDI Bluetooth standard ou un protocole propriétaire (dans ce cas le Learn fonctionne quand même en mode « brut »).'),
+    h('p', { class: 'hint' }, `Bluetooth web : ${ble.supported ? 'disponible ✔' : 'indisponible ici'} · Web MIDI : ${midi.supported ? 'disponible ✔' : 'indisponible ici'}. Sur iPad : navigateur « Bluefy » (Bluetooth web). Sur ordi/Android : Chrome ou Edge.`)));
   const inputs = [['all', 'Toutes les entrées'], ...midi.inputs.map((i) => [i.id, i.name])];
   v.append(h('div', { class: 'bar' }, h('b', {}, 'MIDI'),
     h('label', {}, 'Entrée ', select(inputs, midi.inputFilter, (x) => midi.setInput(x))),
@@ -763,7 +778,7 @@ const WIZ = [
   ['dev.loop.1', 'LOOPER 1'], ['dev.loop.2', 'LOOPER 2'], ['dev.loop.4', 'LOOPER 4'], ['dev.loop.8', 'LOOPER 8'],
 ];
 function startWizard() {
-  if (!midi.supported || !midi.inputs.length) toast('Aucune entrée MIDI détectée — connecte le RM-808 (Bluetooth MIDI ou USB) d\'abord.');
+  if (!ble.connected && (!midi.supported || !midi.inputs.length)) toast('Aucune entrée MIDI détectée — connecte le RM-808 (Bluetooth MIDI ou USB) d\'abord.');
   showTab('device'); let i = 0;
   const box = h('div', { class: 'wizard' }); document.body.append(box);
   const end = () => { midi.cancelLearn(); box.remove(); document.querySelectorAll('.learn-target').forEach((x) => x.classList.remove('learn-target')); renderMidi(); };
@@ -842,6 +857,7 @@ function renderHelp() {
   <br>· <b>Android</b> : associe-le via une appli MIDI BLE, puis ouvre Chrome.
   <br>· <b>iPad</b> : Safari ne supporte pas Web MIDI. Utilise un navigateur iOS avec Web MIDI (ex. « Web MIDI Browser ») et associe le RM-808 depuis ce navigateur ou une appli BLE MIDI.</li>
   <li>Onglet <b>MIDI</b> → regarde le <b>moniteur</b> : tu vois ce que chaque potard / pad envoie.</li>
+  <li><b>Le plus simple : 🔵 Connexion Bluetooth directe</b> (onglet MIDI) — ferme d'abord l'appli X808, puis « Connecter le RM-808 ». Marche dans Chrome/Edge (ordi, Android) et dans le navigateur <b>Bluefy</b> sur iPad, sans aucun réglage système.</li>
   <li>Lance <b>🧭 Assistant RM-808</b> : il te demande de toucher chaque contrôle un par un et les assigne au contrôleur virtuel. Les contrôles qui n'envoient rien peuvent être passés.</li>
   <li><b>Mode Learn</b> : n'importe quel bouton/potard de l'appli (synthé, effets, pistes…) peut être assigné à un contrôle du RM-808. Les potards sans fin (encodeurs) : passe le mode en « Relatif ».</li></ul>
   <h3>2. Le contrôleur (comme sur la machine)</h3>
@@ -889,4 +905,4 @@ document.getElementById('start').addEventListener('click', async (e) => {
   try { await boot(); document.getElementById('splash').remove(); }
   catch (err) { console.error(err); document.getElementById('splashMsg').textContent = 'Erreur : ' + err.message; }
 });
-window.__rm808 = { S, engine, midi, get seq() { return seq; } };
+window.__rm808 = { S, engine, midi, ble, get seq() { return seq; } };
