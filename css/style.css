@@ -30,7 +30,7 @@ button, select, input { font: inherit; color: inherit; }
 .hdr .info { display: flex; gap: 8px; flex-wrap: wrap; font-size: 12px; } .hdr .info span { background: var(--panel2); padding: 3px 8px; border-radius: 10px; }
 .hdr .info .kitname { color: var(--org); }
 #scope { background: #0b0b0c; border-radius: 6px; height: 46px; width: 200px; margin-left: auto; }
-.midi-pill { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: var(--panel2); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.midi-pill { cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 12px; background: var(--panel2); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .midi-pill.ok { background: #183d27; color: var(--ok); } .midi-pill.bad { background: #3d1818; color: #ff8a8a; }
 .tabs { display: flex; gap: 2px; padding: 6px 14px 0; overflow-x: auto; background: #101113; border-bottom: 1px solid var(--line); }
 .tabs button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 8px 12px; cursor: pointer; color: var(--mut); white-space: nowrap; }

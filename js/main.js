@@ -591,6 +591,16 @@ function keyboard(part) {
 const heldKeys = new Map();
 function onKey(e, down) {
   if (e.target.matches('input, textarea, select')) return;
+  // Keyboard-type controllers (Bluetooth HID): every key is learnable / mappable like a MIDI control.
+  if (!e.repeat && e.code && e.code !== 'Escape') {
+    const key = `key:${e.code}`;
+    if (S.tab === 'midi' || midi.learnTarget || midi.map[key]) {
+      const m = { type: down ? 'noteon' : 'noteoff', ch: 0, num: e.keyCode, val: down ? 127 : 0, key, input: 'Clavier / HID « ' + e.key + ' »' };
+      if (midi.learnTarget && !down) return;
+      if (midi.learnTarget || midi.map[key]) { e.preventDefault(); midi.dispatch(m); return; }
+      if (down) logLine(`${m.input} · ${e.code}`);
+    }
+  }
   if (down && e.code === 'Space') { e.preventDefault(); togglePlay(); return; }
   if (e.repeat) return;
   const part = S.tab === 'bass' ? 'bass' : 'lead';
@@ -734,7 +744,7 @@ function routeMidi(m) {
 function midiStatus() {
   const pill = document.getElementById('midiPill'); if (!pill) return;
   if (ble.connected) { pill.textContent = `🔵 ${ble.device.name || 'BLE'} (${ble.mode === 'midi' ? 'MIDI BLE' : 'brut'})`; pill.className = 'midi-pill ok'; return; }
-  if (!midi.supported) { pill.textContent = 'Web MIDI absent — utilise 🔵 Bluetooth'; pill.className = 'midi-pill bad'; return; }
+  if (!midi.supported) { pill.textContent = ble.supported ? '🔵 Toucher pour connecter le RM-808' : 'Bluetooth web absent — ouvre dans Bluefy'; pill.className = 'midi-pill ' + (ble.supported ? '' : 'bad'); pill.onclick = ble.supported ? connectBle : null; return; }
   pill.textContent = midi.inputs.length ? `MIDI : ${midi.inputs.map((i) => i.name).join(', ')}` : 'MIDI : aucun appareil';
   pill.className = 'midi-pill ' + (midi.inputs.length ? 'ok' : '');
 }
@@ -858,6 +868,7 @@ function renderHelp() {
   <br>· <b>iPad</b> : Safari ne supporte pas Web MIDI. Utilise un navigateur iOS avec Web MIDI (ex. « Web MIDI Browser ») et associe le RM-808 depuis ce navigateur ou une appli BLE MIDI.</li>
   <li>Onglet <b>MIDI</b> → regarde le <b>moniteur</b> : tu vois ce que chaque potard / pad envoie.</li>
   <li><b>Le plus simple : 🔵 Connexion Bluetooth directe</b> (onglet MIDI) — ferme d'abord l'appli X808, puis « Connecter le RM-808 ». Marche dans Chrome/Edge (ordi, Android) et dans le navigateur <b>Bluefy</b> sur iPad, sans aucun réglage système.</li>
+  <li><b>Si le RM-808 se connecte comme un clavier Bluetooth</b> (il apparaît connecté dans les réglages Bluetooth de l'iPad/iPhone et ses boutons tapent des touches) : laisse-le connecté au système, ouvre l'onglet MIDI, appuie sur ses boutons — les touches s'affichent dans le moniteur et se règlent avec le Learn / l'assistant comme du MIDI.</li>
   <li>Lance <b>🧭 Assistant RM-808</b> : il te demande de toucher chaque contrôle un par un et les assigne au contrôleur virtuel. Les contrôles qui n'envoient rien peuvent être passés.</li>
   <li><b>Mode Learn</b> : n'importe quel bouton/potard de l'appli (synthé, effets, pistes…) peut être assigné à un contrôle du RM-808. Les potards sans fin (encodeurs) : passe le mode en « Relatif ».</li></ul>
   <h3>2. Le contrôleur (comme sur la machine)</h3>
