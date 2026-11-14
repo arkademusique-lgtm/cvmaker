@@ -9,7 +9,7 @@ const s16 = (x) => `0000${x}-0000-1000-8000-00805f9b34fb`;
 const CANDIDATES = [BLE_MIDI_SERVICE, '6e400001-b5a3-f393-e0a9-e50e24dcca9e', '49535343-fe7d-4ae5-8fa9-9fafd205e455', '0000fe59-0000-1000-8000-00805f9b34fb',
   'e7810a71-73ae-499d-8c15-faa9aef0c3f2', 'bc2f4cc6-aaef-4351-9034-d66268e328f0', '569a1101-b87f-490c-92cb-11ba5ea5167c', '0003cdd0-0000-1000-8000-00805f9b0131',
   '00005500-d102-11e1-9b23-00025b00a5a5', 'f000ffc0-0451-4000-b000-000000000000', '0000d0ff-3c17-d293-8e48-14fe2e4da212',
-  ...['ffe0', 'ffe5', 'fff0', 'fff1', 'fff3', 'ff00', 'ff10', 'ff12', 'ffd0', 'ffd5', 'ffa0', 'ffb0', 'ffc0', 'ffcc', 'ae00', 'ae30', 'ae3a', 'af00', 'af30', 'fee7', 'fee0', 'fee1', 'fe00', 'fd00', 'fda0', 'fe95',
+  ...['ffaa', 'ffe0', 'ffe5', 'fff0', 'fff1', 'fff3', 'ff00', 'ff10', 'ff12', 'ffd0', 'ffd5', 'ffa0', 'ffb0', 'ffc0', 'ffcc', 'ae00', 'ae30', 'ae3a', 'af00', 'af30', 'fee7', 'fee0', 'fee1', 'fe00', 'fd00', 'fda0', 'fe95',
     'ee00', 'ee01', 'f000', 'a000', 'a002', 'abf0', 'ab00', 'e0ff', 'cc00', 'cdd0', '18f0', '1910', '1812', '1800', '1801', '180a', '180f'].map(s16)];
 
 // USB HID keyboard usage → KeyboardEvent.code (same names as the browser's own keyboard events)
@@ -56,7 +56,8 @@ export class RawDecoder {
   }
   feed(input, id, u8, force) {
     const looksKbd = u8.length === 8 && u8[1] === 0 && u8.slice(2).every((b) => b === 0 || (b >= 4 && b <= 0xe7));
-    if (this.onKey && !force && (this.mode === 'kbd' || (this.mode === 'auto' && looksKbd && (id.includes('2a4d') || this.kbdDetected)))) return this.feedKbd(input, id, u8);
+    // The RM-808 mirrors its keyboard reports on a vendor characteristic (FFE1), so detect them by shape, not by UUID.
+    if (this.onKey && !force && (this.mode === 'kbd' || (this.mode === 'auto' && looksKbd && (u8[0] === 0 || id.includes('2a4d'))))) return this.feedKbd(input, id, u8);
     const mode = force || (this.mode === 'auto' || this.mode === 'kbd' ? (u8.length >= 6 ? 'state' : 'event') : this.mode), rawHex = hex(u8);
     if (mode === 'event') {
       const last = u8[u8.length - 1] ?? 0, key = `raw:${id}:${hex(u8.slice(0, Math.max(1, u8.length - 1)))}`;
