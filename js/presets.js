@@ -1,4 +1,5 @@
 // Instrument presets for the wavetable/FM synth. Each overrides DEFAULT_PATCH.
+import { DNB_PRESETS } from './dnb.js';
 const A = (o) => ({ on: true, ...o }), B = (o) => ({ on: true, ...o });
 export const PRESETS = [
   { name: 'Init Saw', oscA: A({ table: 'basic', pos: 0.67 }) },
@@ -53,9 +54,12 @@ PRESETS.push(
 );
 
 /** Category of an instrument preset, for one-tap filtering. */
-export const PRESET_CATS = [['all', 'Tous'], ['bass', 'Basses'], ['lead', 'Leads'], ['pad', 'Pads'], ['keys', 'Claviers'], ['pluck', 'Plucks & percs'], ['fx', 'FX']];
+PRESETS.push(...DNB_PRESETS);
+
+export const PRESET_CATS = [['all', 'Tous'], ['dnb', 'Pack D&B'], ['bass', 'Basses'], ['lead', 'Leads'], ['pad', 'Pads'], ['keys', 'Claviers'], ['pluck', 'Plucks & percs'], ['fx', 'FX']];
 export function presetCat(name) {
   const n = name.toLowerCase();
+  if (n.startsWith('dnb ')) return 'dnb';
   if (/bass|sub|303|reese|wobble|growl|squelch/.test(n)) return 'bass';
   if (/pad|cordes|drone|choir|voix/.test(n)) return 'pad';
   if (/piano|orgue|organ|clav|wurly|keys|vibra|marimba|kalimba|cloche|bell|steel/.test(n)) return 'keys';
@@ -77,5 +81,9 @@ export const FX_CHAINS = [
   { name: 'Trap', chain: [['djfilter'], ['saturator', { drive: 0.25 }], ['eq3', { low: 4, high: 3 }], ['space', { type: 'plate', size: 1.2 }, 0.12], ['limiter', { threshold: -3, gain: 1.4 }]] },
   { name: 'Psyché', chain: [['djfilter'], ['phaser'], ['flanger', {}, 0.35], ['tapeecho', { div: '1/8', feedback: 0.6 }, 0.3], ['space', { type: 'hall', size: 3 }, 0.25]] },
   { name: 'Gate trance', chain: [['djfilter'], ['gate', { div: '1/16', depth: 0.9 }], ['delay', {}, 0.2], ['space', { type: 'hall', size: 2.5 }, 0.25]] },
+  { name: 'D&B Rollers', chain: [['djfilter'], ['eq3', { low: 2, midF: 400, mid: -2, high: 2 }], ['compressor', { threshold: -16, ratio: 4, makeup: 1.3 }], ['delay', { div: '3/16', feedback: 0.35 }, 0.12], ['space', { type: 'plate', size: 1.4 }, 0.15], ['limiter', { threshold: -3, gain: 1.3 }]] },
+  { name: 'D&B Neuro', chain: [['djfilter'], ['saturator', { drive: 0.4 }], ['decimator', { rate: 2, bits: 12 }, 0.25], ['pump', { div: '1/4', depth: 0.35 }], ['space', { type: 'room', size: 0.9 }, 0.12], ['limiter', { threshold: -4, gain: 1.4 }]] },
+  { name: 'D&B Liquid', chain: [['djfilter'], ['chorus', {}, 0.3], ['tapeecho', { div: '1/8', feedback: 0.45 }, 0.2], ['space', { type: 'hall', size: 3.5 }, 0.28], ['compressor', { threshold: -14, ratio: 3, makeup: 1.2 }]] },
+  { name: 'Jungle Dub', chain: [['djfilter'], ['tape', { wow: 0.35 }], ['tapeecho', { div: '3/16', feedback: 0.65 }, 0.35], ['space', { type: 'spring', size: 2.2 }, 0.3], ['compressor']] },
   { name: 'Robot', chain: [['djfilter'], ['ringmod', { freq: 120 }, 0.6], ['formant', { vowel: 2 }], ['decimator', { rate: 3, bits: 8 }, 0.5]] },
 ];
