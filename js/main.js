@@ -11,6 +11,7 @@ import { BleLink, HidLink, GamepadLink, RawDecoder, hidCode } from './ble.js';
 import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
 import { PRESETS, PRESET_CATS, presetCat, FX_CHAINS } from './presets.js';
 import { importVital } from './vital.js';
+import { renderPack, packToZip } from './packs.js';
 import { envEditor, lfoEditor, SHAPE_NAMES, modSourceBar, decorateMods } from './visual.js';
 import { SHAPES } from './audio/synth.js';
 import { GENRES, GENRE_IDS, ROLES, PER_BUCKET, LIBRARY_SIZE, genrePreset, genreGroove } from './genres.js';
@@ -101,6 +102,10 @@ function applyKitMix() { for (let i = 0; i < DRUM_TRACKS; i++) { const t = S.kit
 
 async function ensureSamples(kit) {
   for (const t of kit.tracks) {
+    if (t.sampleId?.startsWith('url:') && !engine.samples.has(t.sampleId)) {
+      try { const r = await fetch(t.sampleId.slice(4)); engine.samples.set(t.sampleId, await engine.ctx.decodeAudioData(await r.arrayBuffer())); } catch (e) { console.warn('sample', t.sampleId, e); }
+      continue;
+    }
     if (t.sampleId && !engine.samples.has(t.sampleId)) {
       const rec = await db.get('samples', t.sampleId);
       if (rec) { try { engine.samples.set(t.sampleId, await engine.ctx.decodeAudioData(rec.data.slice(0))); } catch (e) { console.warn(e); } }
@@ -1106,6 +1111,34 @@ function renderFx() {
 }
 
 // ---------------------------------------------------------------- kits view
+// ---------------------------------------------------------------- genre sample packs
+let packGenre = 'dnb', packBusy = false;
+async function buildPack(g, mode) {
+  if (packBusy) return; packBusy = true; const G = GENRES[g], prog = document.getElementById('packProg');
+  try {
+    const items = await renderPack(g, Math.floor(Math.random() * 1e6), (d, n) => { if (prog) prog.textContent = `Fabrication : ${d}/${n} sons…`; });
+    if (mode === 'zip') {
+      if (prog) prog.textContent = 'Compression du ZIP…';
+      download(await packToZip(G.name, items), `RM-808 ${G.name} (${items.length} samples).zip`);
+      toast(`Pack ${G.name} : ${items.length} samples téléchargés`);
+    } else {
+      const pickOne = (folder, k = 0) => items.filter((x) => x.folder === folder)[k];
+      const slots = [pickOne('Kicks'), pickOne('Snares'), pickOne('Percs', 0), pickOne('Percs', 1), pickOne('Percs', 2), pickOne('Percs', 3), pickOne('Claps'), pickOne('Percs', 4), pickOne('Cymbals'), items.find((x) => x.name.startsWith('Open Hat')), items.find((x) => x.name.startsWith('Closed Hat'))];
+      const k = cloneKit(S.kit, `Pack ${G.name} ${new Date().toLocaleTimeString().slice(0, 5)}`);
+      for (let i = 0; i < 11; i++) { const it = slots[i]; if (!it) continue; const id = await storeSample(it.name, await encodeWav(it.buffer).arrayBuffer()); Object.assign(k.tracks[i], { sampleId: id, sampleName: it.name, decay: 1, tone: 1, tune: 0.5, drive: 0, choke: i >= 9 ? 'hh' : null }); }
+      S.kits.push(k); await db.put('kits', k); await loadKit(S.kits.length - 1);
+      toast(`Kit « ${k.name} » chargé (${items.length} sons fabriqués, 11 utilisés)`);
+    }
+  } catch (e) { console.error(e); toast('Fabrication du pack impossible sur ce navigateur'); }
+  packBusy = false; if (prog) prog.textContent = '';
+}
+function samplePacksPanel() {
+  return h('div', { class: 'panel packs' }, h('div', { class: 'ptitle' }, 'PACKS DE SAMPLES PAR GENRE — sons originaux, libres de droits'),
+    h('div', { class: 'row' }, select(GENRE_IDS.map((g) => [g, GENRES[g].name]), packGenre, (x) => (packGenre = x)),
+      button('🥁 Fabriquer un kit', () => buildPack(packGenre, 'kit'), { cls: 'accent' }), button('⇩ Télécharger le pack (.zip)', () => buildPack(packGenre, 'zip')),
+      h('span', { class: 'hint', id: 'packProg' })),
+    h('p', { class: 'hint' }, 'Chaque pack : ~50 sons (8 kicks, 8 caisses claires, claps, charleys, cymbales, percussions, basses, accords, pads, FX) fabriqués par le moteur de l\'app dans le style du genre. Chaque appui donne un pack différent. Les kits « (CC0) » utilisent de vraies percussions acoustiques du domaine public (Versilian Community Sample Library).'));
+}
 async function renderKits() {
   const v = views.kits; if (!v) return; v.innerHTML = '';
   const bar = h('div', { class: 'bar' }, h('b', {}, 'BIBLIOTHÈQUE DE KITS'), h('span', { class: 'patchname' }, S.kit.name),
@@ -1123,7 +1156,7 @@ async function renderKits() {
   const list = h('div', { class: 'kitlist' }, S.kits.map((k, i) => h('button', { class: `kit ${i === S.kitIdx ? 'on' : ''}`, onclick: () => loadKit(i) }, h('b', {}, k.name), h('small', {}, k.builtin ? 'intégré' : 'perso'))));
   const detail = h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'Contenu du kit courant (clic = écouter)'),
     h('div', { class: 'kittracks' }, S.kit.tracks.map((t, i) => h('div', { class: 'kt', onclick: () => trigger(i) }, h('b', {}, TRACKS[i]), h('span', {}, t.sampleName ? '📁 ' + t.sampleName : VOICES[t.voice]?.[0])))));
-  v.append(bar, list, detail, h('p', { class: 'hint' }, 'Kits infinis : « > » sur DRUM KIT après le dernier kit génère un nouveau kit. Chaque piste peut être une voix synthétisée ou n\'importe quel sample (glisser-déposer dans le Séquenceur). Les kits perso sont stockés dans le navigateur ; exporte-les pour les partager.'));
+  v.append(bar, samplePacksPanel(), list, detail, h('p', { class: 'hint' }, 'Kits infinis : « > » sur DRUM KIT après le dernier kit génère un nouveau kit. Chaque piste peut être une voix synthétisée ou n\'importe quel sample (glisser-déposer dans le Séquenceur). Les kits perso sont stockés dans le navigateur ; exporte-les pour les partager.'));
 }
 async function saveKit() {
   if (S.kit.builtin) { S.kit = cloneKit(S.kit, prompt('Nom du nouveau kit', S.kit.name + ' perso') || S.kit.name + ' perso'); S.kits.push(S.kit); S.kitIdx = S.kits.length - 1; }

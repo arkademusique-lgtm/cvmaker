@@ -24,6 +24,12 @@ export const BUILTIN_KITS = [
   kit('D&B Neuro Punch', { 0: { tune: 0.55, decay: 0.32, click: 0.6, pitch: 0.9, drive: 0.4 }, 1: { tune: 0.62, tone: 0.95, decay: 0.38, drive: 0.35 }, 6: { voice: 'noise', tune: 0.7, tone: 0.8, decay: 0.2 }, 5: { voice: 'fmperc', tune: 0.75 }, 7: { voice: 'zap', tune: 0.5 }, 10: { decay: 0.08, tone: 1 } }),
   kit('D&B Liquid Doux', { 0: { tune: 0.58, decay: 0.35, tone: 0.45, click: 0.2 }, 1: { tune: 0.55, tone: 0.55, decay: 0.45 }, 5: { voice: 'clave', tune: 0.4 }, 8: { voice: 'shaker', decay: 0.4 }, 9: { decay: 0.45, tone: 0.6 }, 10: { decay: 0.12, tone: 0.65 } }),
   kit('Jungle Breaks', { 0: { tune: 0.5, decay: 0.38, tone: 0.4, drive: 0.25 }, 1: { tune: 0.75, tone: 0.7, decay: 0.28, drive: 0.3 }, 2: { voice: 'conga', tune: 0.7 }, 3: { voice: 'conga', tune: 0.45 }, 5: { tune: 0.8 }, 8: { decay: 0.55, tone: 0.5 }, 10: { decay: 0.14, tone: 0.55 } }),
+  // Acoustic one-shots from the Versilian Community Sample Library (CC0, public domain) — public/samples/vcsl
+  ...[['Percus Acoustiques (CC0)', ['kick_muted', 'snare', 'bongo_hi', 'conga', 'bongo_lo', 'claves', 'cajon_slap', 'cowbell', 'crash', 'tambourine', 'shaker']],
+    ['Cajon & Mains (CC0)', ['cajon_low', 'cajon_slap', 'cajon_mid', 'frame', 'bongo_lo', 'claves', 'tambourine', 'agogo', 'guiro', 'hat_open', 'hat_closed']],
+    ['Batterie Live (CC0)', ['kick_concert', 'snare2', 'bongo_hi', 'conga', 'frame', 'brake', 'cajon_slap', 'cowbell', 'crash', 'hat_open', 'hat_closed']]].map(([name, files]) => ({
+    id: 'bi_' + name.replace(/\W+/g, '').toLowerCase(), name, builtin: true,
+    tracks: files.map((f, i) => makeTrack(DEFAULT_VOICES[i], { sampleId: `url:samples/vcsl/${f}.wav`, sampleName: `${f} (VCSL, CC0)`, decay: 1, tone: 1, tune: 0.5, level: f.startsWith('kick') ? 0.85 : 0.72 })) })),
   kit('FM Métal', { 0: { voice: 'fmperc', tune: 0.1, tone: 0.2, decay: 0.5 }, 1: { voice: 'fmperc', tune: 0.5, tone: 0.9, decay: 0.3 }, 2: { voice: 'fmperc', tune: 0.7 }, 3: { voice: 'fmperc', tune: 0.55 }, 4: { voice: 'fmperc', tune: 0.4 }, 7: { voice: 'fmperc', tune: 0.8, tone: 0.6 } }),
 ];
 
