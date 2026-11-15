@@ -271,3 +271,7 @@ body.learning [data-learn] { outline: 1px dashed #3fd0ff88; outline-offset: 2px;
 .perfbox summary { cursor: pointer; font-size: 12px; color: var(--blue); font-weight: 700; padding: 2px 0 6px; }
 @media (max-width: 1000px) { .perfpads.compact { grid-template-columns: repeat(6, 1fr); } }
 @media (max-width: 700px) { .perfpads { grid-template-columns: repeat(4, 1fr); } .perfpads.compact { grid-template-columns: repeat(4, 1fr); } }
+.dbtn.step.notekey { font-size: 11px; line-height: 1.05; color: #000; align-items: center; padding: 2px; white-space: normal; font-weight: 800; }
+.dbtn.step.rootkey { outline: 3px solid #fff; outline-offset: -5px; }
+.scalebox { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.scalebox label { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--mut); }
