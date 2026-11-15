@@ -6,7 +6,7 @@ import { PERF } from './audio/perf.js';
 import { TABLES, tableOptions, framesAt, N as WT_N, setCustomFrames, importWavetable, exportUserTables, importUserTables } from './audio/wavetables.js';
 import { Sequencer, emptyPattern } from './sequencer.js';
 import { Midi } from './midi.js';
-import { BleLink, HidLink, GamepadLink, RawDecoder } from './ble.js';
+import { BleLink, HidLink, GamepadLink, RawDecoder, hidCode } from './ble.js';
 import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
 import { PRESETS, PRESET_CATS, presetCat, FX_CHAINS } from './presets.js';
 import * as db from './storage.js';
@@ -27,9 +27,33 @@ function keyEvent(code, down, input, rawHex) {
   if (down) { if (st.src && st.src !== src && t - st.t < 500) return; st.src = src; st.t = t; if (st.down && !KNOB_KEYS[code]) midi.dispatch({ type: 'noteoff', ch: 0, num: 0, val: 0, key: `key:${code}`, input }); st.down = true; }
   else { if (!st.down) return; st.down = false; }
   if (rmProfile() && KNOB_KEYS[code] && !midi.learnTarget) { if (down) { knobStep(code); logKnob(code, input); } return; } // knob notch
+  if (synthTab() && !midi.learnTarget) return synthKey(code, down, input); // Synthé / Basse tab: every RM-808 button plays the scale
   midi.dispatch({ type: down ? 'noteon' : 'noteoff', ch: 0, num: 0, val: down ? 127 : 0, key: `key:${code}`, input, rawHex, keyName: code });
 }
 decoder.onKey = keyEvent;
+// In the Synthé / Basse tabs the RM-808 is a scale keyboard: no mapping needed. Buttons are ordered by the key they send
+// (consecutive keys → consecutive notes), wrapped on 16 notes so the 16 step keys cover the whole range.
+const synthTab = () => (S.tab === 'lead' || S.tab === 'bass') && (kbdCtrl() || decoder.kbdDetected);
+let KEY_ORDER = null;
+function keyRank(code) {
+  if (!KEY_ORDER) { KEY_ORDER = []; for (let u = 4; u <= 0x65; u++) { const c = hidCode(u); if (!KNOB_KEYS[c]) KEY_ORDER.push(c); } }
+  const i = KEY_ORDER.indexOf(code); if (i >= 0) return i;
+  let h = 0; for (const ch of code) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h;
+}
+const synthHeld = {};
+function synthKey(code, down, input) {
+  const part = S.tab === 'bass' ? 'bass' : 'lead';
+  if (down) {
+    if (synthHeld[code]) stopNotes(synthHeld[code].notes, synthHeld[code].part);
+    const deg = keyRank(code) % 16, notes = startNotes(deg, 0.85, part); synthHeld[code] = { part, notes };
+    notes.forEach((n) => document.querySelectorAll(`.view-${part} .key[data-note="${n}"]`).forEach((x) => x.classList.add('down')));
+    logLine(`${input} · ${code} → ${notes.map(noteName).join(' ')}`);
+  } else {
+    const h0 = synthHeld[code]; if (!h0) return; delete synthHeld[code];
+    h0.notes.forEach((n) => document.querySelectorAll(`.view-${h0.part} .key[data-note="${n}"]`).forEach((x) => x.classList.remove('down')));
+    if (!PL.latch) stopNotes(h0.notes, h0.part);
+  }
+}
 // Built-in RM-808 profile: each knob sends a pair of keys (one per direction) every time it moves one notch.
 const RM_KNOBS = [['dev.tempo', 'F1', 'F2'], ['dev.pot.0', 'F3', 'F4'], ['dev.pot.1', 'F5', 'F6'], ['dev.pot.2', 'F7', 'F8'], ['dev.pot.3', 'F9', 'F10'], ['dev.pot.4', 'F11', 'F12'],
   ['dev.pot.5', 'PrintScreen', 'ScrollLock'], ['dev.pot.6', 'Pause', 'Insert'], ['dev.pot.7', 'Home', 'PageUp'], ['dev.pot.8', 'End', 'PageDown'], ['dev.pot.9', 'ArrowRight', 'ArrowLeft'],
@@ -250,7 +274,7 @@ function patNav(d) {
 const POT_LABEL = { level: 'LEVEL', tune: 'TUNING', tone: 'TONE', decay: 'DECAY' };
 const MACROS = [['Cutoff', 'filter.cutoff', 0, 1], ['Réso', 'filter.res', 0.1, 20], ['Env filt', 'filter.envAmt', -1, 1], ['Drive', 'filter.drive', 0, 1], ['Attack', 'ampEnv.a', 0.001, 2], ['Decay', 'ampEnv.d', 0.01, 3],
   ['Sustain', 'ampEnv.s', 0, 1], ['Release', 'ampEnv.r', 0.01, 4], ['Wave A', 'oscA.pos', 0, 1], ['Détune', 'oscA.detune', 0, 1], ['LFO', 'lfo1.depth', 0, 1], ['Volume', 'volume', 0, 1.2]];
-const potLayer = () => (sh() ? 'pan' : S.keyMode === 'note' ? 'lead' : S.keyMode === 'bass' ? 'bass' : 'trk');
+const potLayer = () => (sh() ? 'pan' : S.tab === 'lead' ? 'lead' : S.tab === 'bass' ? 'bass' : S.keyMode === 'note' ? 'lead' : S.keyMode === 'bass' ? 'bass' : 'trk');
 const potLabel = (i) => { const L = potLayer(); return L === 'pan' ? 'PAN' : L === 'trk' ? POT_LABEL[S.pots] : MACROS[i][0].toUpperCase(); };
 function potGet(i) {
   const L = potLayer();
@@ -291,8 +315,8 @@ const app = document.getElementById('app');
 const views = {};
 const TABS = [['play', 'Jouer', '🎹'], ['device', 'RM-808', '🎛️'], ['seq', 'Séquenceur', '▦'], ['lead', 'Synthé', '〰️'], ['bass', 'Basse', '🎸'], ['fx', 'Effets', '✨'], ['kits', 'Kits', '🥁'], ['song', 'Chanson', '🎼'], ['midi', 'MIDI', '🔌'], ['project', 'Projet', '💾'], ['help', 'Aide', '❓']];
 function showTab(t) {
-  if (S.tab === 'play' && t !== 'play') playPanic();
-  S.tab = t; db.ls.set('tab', t);
+  if ((S.tab === 'play' || S.tab === 'lead' || S.tab === 'bass') && t !== S.tab) { playPanic(); Object.keys(synthHeld).forEach((k) => delete synthHeld[k]); }
+  S.tab = t; db.ls.set('tab', t); refreshDevice();
   for (const [k] of TABS) { views[k].hidden = k !== t; }
   document.querySelector(`.tabs button[data-tab="${t}"]`)?.scrollIntoView({ block: 'nearest', inline: 'center' });
   window.scrollTo(0, 0);
@@ -735,9 +759,20 @@ const userPresets = () => db.ls.get('userPresets', []);
 const synthOf = (part) => (part === 'lead' ? engine.leadSynth : engine.bassSynth);
 let waveCanvases = [];
 
+function rmBanner(part) {
+  const ck = part === 'bass' ? 'chordBass' : 'chord', upd = () => { savePlay(); renderSynth(part); renderDevice(); };
+  return h('div', { class: 'rmbanner' }, h('b', {}, `🎛️ Le RM-808 joue ${part === 'bass' ? 'la basse' : 'le synthé'} sur cet onglet`),
+    h('span', { class: 'hint' }, 'Tous ses boutons jouent la gamme · les 12 potards règlent le son'),
+    h('label', {}, 'Tonique ', select(NOTE_NAMES.map((n, i) => [String(i), n]), String(PL.root), (x) => { PL.root = +x; upd(); })),
+    h('label', {}, 'Gamme ', select(Object.entries(SCALES).map(([k, [l]]) => [k, l]), PL.scale, (x) => { PL.scale = x; upd(); })),
+    h('div', { class: 'seg' }, ...[[0, 'Notes'], [3, 'Accords 3'], [4, 'Accords 4']].map(([n, l]) => h('button', { class: `btn ${(PL[ck] || 0) === n ? 'on' : ''}`, onclick: () => { PL[ck] = n; upd(); } }, l))),
+    h('div', { class: 'seg' }, button('Oct −', () => { PL.octs[part] = Math.max(0, PL.octs[part] - 1); upd(); }), h('span', { class: 'octv' }, 'C' + PL.octs[part]), button('Oct +', () => { PL.octs[part] = Math.min(6, PL.octs[part] + 1); upd(); })),
+    toggle('Maintien', PL.latch, (x) => { PL.latch = x; savePlay(); if (!x) playPanic(); }));
+}
 function renderSynth(part) {
   const v = views[part]; v.innerHTML = '';
   const synth = synthOf(part); const P = synth.patch;
+  v.append(rmBanner(part));
   const kn = (path, specKey) => {
     const sp = SPEC[specKey || path] || SPEC[path.split('.').pop()];
     return knob({ ...sp, value: getPath(P, path), def: getPath(DEFAULT_PATCH, path), onInput: (x) => { setPatchParam(part, path, x); if (path.endsWith('.pos') || path.endsWith('.table')) drawWaves(); }, learn: `${part}.${path}`, size: 'sm' });
