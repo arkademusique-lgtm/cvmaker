@@ -318,3 +318,5 @@ body.mod-armed .view-lead .knob[data-learn], body.mod-armed .view-bass .knob[dat
 .knob.modded .knob-dial { box-shadow: 0 0 0 3px var(--mc), 0 2px 4px #0008; }
 .modbadge { position: absolute; top: -6px; right: -4px; font-size: 9px; font-weight: 800; color: #111; padding: 1px 4px; border-radius: 6px; pointer-events: none; }
 .patpanel { margin-bottom: 10px; } .patpanel .row { margin-bottom: 6px; }
+.elgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.elitem { display: flex; gap: 4px; align-items: center; } .elitem .chip { flex: 1; justify-content: flex-start; }
