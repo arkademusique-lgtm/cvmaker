@@ -1,0 +1,3 @@
+These one-shots come from the Versilian Community Sample Library (VCSL), https://github.com/sgossner/VCSL
+License: Creative Commons CC0 1.0 Universal (public domain dedication).
+They were trimmed, converted to mono 16-bit / 44.1 kHz and normalised for RM-808 Studio.
