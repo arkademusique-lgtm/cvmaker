@@ -48,6 +48,29 @@ function warpCurve(type) {
 }
 const NEXT = { oscA: 'oscB', oscB: 'oscC', oscC: 'oscA' };
 
+/** Drawn LFO shape: points [[x 0..1, y -1..1], …] (x sorted) → value at phase. */
+export function shapeAt(points, ph) {
+  if (!points?.length) return Math.sin(ph * 2 * Math.PI);
+  const pts = points; let i = 0; while (i < pts.length - 1 && pts[i + 1][0] < ph) i++;
+  const [x0, y0] = pts[i], [x1, y1] = pts[Math.min(pts.length - 1, i + 1)];
+  if (x1 <= x0) return y0; return y0 + (y1 - y0) * Math.min(1, Math.max(0, (ph - x0) / (x1 - x0)));
+}
+const lfoWaves = new WeakMap();
+function shapeWave(ctx, points) {
+  let m = lfoWaves.get(ctx); if (!m) { m = new Map(); lfoWaves.set(ctx, m); }
+  const key = JSON.stringify(points); if (m.has(key)) return m.get(key);
+  const N = 512, H = 48, x = Float32Array.from({ length: N }, (_, n) => shapeAt(points, n / N));
+  let mean = 0; for (const v of x) mean += v / N;
+  const re = new Float32Array(H + 1), im = new Float32Array(H + 1);
+  for (let k = 1; k <= H; k++) { let a = 0, b = 0; for (let n = 0; n < N; n++) { const w = (2 * Math.PI * k * n) / N; a += (x[n] - mean) * Math.cos(w); b += (x[n] - mean) * Math.sin(w); } re[k] = (2 * a) / N; im[k] = (2 * b) / N; }
+  const w = ctx.createPeriodicWave(re, im, { disableNormalization: true }); m.set(key, w); return w;
+}
+export const SHAPES = {
+  sine: Array.from({ length: 17 }, (_, i) => [i / 16, Math.sin((i / 16) * 2 * Math.PI)]), triangle: [[0, 0], [0.25, 1], [0.75, -1], [1, 0]], ramp: [[0, -1], [1, 1]], saw: [[0, 1], [1, -1]],
+  square: [[0, 1], [0.499, 1], [0.5, -1], [1, -1]], steps: [[0, -1], [0.249, -1], [0.25, -0.33], [0.499, -0.33], [0.5, 0.33], [0.749, 0.33], [0.75, 1], [1, 1]],
+  pump: [[0, -1], [0.1, -0.2], [0.35, 0.8], [1, 1]], bounce: [[0, 1], [0.15, -1], [0.3, 0.4], [0.45, -1], [0.6, 0], [0.75, -1], [1, -1]],
+};
+
 export class Synth {
   constructor(ctx, dest, patch) {
     this.ctx = ctx;
@@ -63,12 +86,12 @@ export class Synth {
     this.applyGlobal();
     this.wtTimer = setInterval(() => this.wtTick(), 40);
   }
-  makeLfo(cfg) { const o = this.ctx.createOscillator(); o.type = cfg.wave; o.frequency.value = cfg.rate; o.start(); return o; }
+  makeLfo(cfg) { const o = this.ctx.createOscillator(); if (cfg.wave !== 'custom') o.type = cfg.wave; o.frequency.value = cfg.rate; o.start(); return o; }
   applyGlobal() {
     const p = this.patch, t = this.ctx.currentTime;
     this.out.gain.setTargetAtTime(p.volume, t, 0.02);
     this.panner.pan.setTargetAtTime(p.pan, t, 0.02);
-    [p.lfo1, p.lfo2].forEach((c, i) => { this.lfos[i].type = c.wave; this.lfos[i].frequency.setTargetAtTime(c.rate, t, 0.02); });
+    [p.lfo1, p.lfo2].forEach((c, i) => { if (c.wave === 'custom') this.lfos[i].setPeriodicWave(shapeWave(this.ctx, c.shape || SHAPES.triangle)); else this.lfos[i].type = c.wave; this.lfos[i].frequency.setTargetAtTime(c.rate, t, 0.02); });
     this.macroSrc.forEach((s, i) => s.offset.setTargetAtTime(p.macros[i] || 0, t, 0.01));
   }
   setPatch(patch) { this.allOff(); this.patch = mergePatch(patch); this.applyGlobal(); }
@@ -286,7 +309,7 @@ export class Synth {
     const p = this.patch, w = p.wtLfo, posMods = (p.mods || []).filter((m) => /^pos[ABC]$/.test(m.dst) && m.amt);
     if ((!w.depth && !posMods.length) || !this.voices.length) return;
     this.wtPhase += 0.04 * w.rate * Math.PI * 2;
-    const now = this.ctx.currentTime - this.t0, lfoVal = (i) => { const c = [p.lfo1, p.lfo2][i], ph = (now * c.rate) % 1; return c.wave === 'square' ? (ph < 0.5 ? 1 : -1) : c.wave === 'sawtooth' ? ph * 2 - 1 : c.wave === 'triangle' ? 1 - 4 * Math.abs(ph - 0.5) : Math.sin(ph * 2 * Math.PI); };
+    const now = this.ctx.currentTime - this.t0, lfoVal = (i) => { const c = [p.lfo1, p.lfo2][i], ph = (now * c.rate) % 1; return c.wave === 'custom' ? shapeAt(c.shape || SHAPES.triangle, ph) : c.wave === 'square' ? (ph < 0.5 ? 1 : -1) : c.wave === 'sawtooth' ? ph * 2 - 1 : c.wave === 'triangle' ? 1 - 4 * Math.abs(ph - 0.5) : Math.sin(ph * 2 * Math.PI); };
     for (const which of OSCS) {
       const c = p[which]; if (!c.on) continue;
       let off = w.depth ? Math.sin(this.wtPhase) * w.depth * 0.5 : 0;
@@ -298,5 +321,7 @@ export class Synth {
       }
     }
   }
+  /** Current phase 0..1 of LFO i (for the visual editor's playhead). */
+  lfoPhase(i) { const c = [this.patch.lfo1, this.patch.lfo2][i]; return ((this.ctx.currentTime - this.t0) * c.rate) % 1; }
   destroy() { this.allOff(); clearInterval(this.wtTimer); this.lfos.forEach((l) => l.stop()); this.macroSrc.forEach((s) => s.stop()); this.panner.disconnect(); }
 }

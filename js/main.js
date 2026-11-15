@@ -11,6 +11,8 @@ import { BleLink, HidLink, GamepadLink, RawDecoder, hidCode } from './ble.js';
 import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
 import { PRESETS, PRESET_CATS, presetCat, FX_CHAINS } from './presets.js';
 import { importVital } from './vital.js';
+import { envEditor, lfoEditor, SHAPE_NAMES, modSourceBar, decorateMods } from './visual.js';
+import { SHAPES } from './audio/synth.js';
 import { GENRES, GENRE_IDS, ROLES, PER_BUCKET, LIBRARY_SIZE, genrePreset, genreGroove } from './genres.js';
 import * as db from './storage.js';
 import { h, knob, button, select, toggle, toast, controls, registerControl, setLearnHandler, pickFile } from './ui.js';
@@ -853,8 +855,9 @@ function renderSynth(part) {
   v.append(rmBanner(part), presetBrowser(part));
   const kn = (path, specKey) => {
     const sp = SPEC[specKey || path] || SPEC[path.split('.').pop()];
-    return knob({ ...sp, value: getPath(P, path), def: getPath(DEFAULT_PATCH, path), onInput: (x) => { setPatchParam(part, path, x); if (path.endsWith('.pos') || path.endsWith('.table')) drawWaves(); }, learn: `${part}.${path}`, size: 'sm' });
+    return knob({ ...sp, value: getPath(P, path), def: getPath(DEFAULT_PATCH, path), onInput: (x) => { setPatchParam(part, path, x); if (path.endsWith('.pos') || path.endsWith('.table')) drawWaves(); redraws.forEach((f) => f()); if (path.startsWith('mods.')) decorateMods(part, synth.patch.mods); }, learn: `${part}.${path}`, size: 'sm' });
   };
+  const redraws = [];
   const sel = (path, opts, after) => select(opts, getPath(P, path), (x) => { setPatchParam(part, path, x); after && after(); });
   const tog = (path, label) => toggle(label, !!getPath(P, path), (x) => setPatchParam(part, path, x), { learn: `${part}.${path}` });
   const all = [...PRESETS.map((p, i) => ['b' + i, p.name]), ...userPresets().map((p, i) => ['u' + i, '★ ' + p.name])];
@@ -884,11 +887,21 @@ function renderSynth(part) {
       select(MOD_DSTS, m.dst, (x) => rebuild(() => { const ms = deepClone(P.mods); ms[i].dst = x; synth.set('mods', ms); })),
       kn(`mods.${i}.amt`, 'modamt'), button('✕', () => rebuild(() => synth.set('mods', P.mods.filter((_, j) => j !== i))), { title: 'Supprimer' }))))
       : h('p', { class: 'hint' }, 'Aucune modulation. Exemple : Macro 1 → Cutoff filtre 1 pour ouvrir le filtre avec un seul potard, ou Env. 3 → Hauteur pour un « pitch drop ». Les macros s\'assignent au RM-808 avec le mode Learn.'));
-  const env = (e, title) => h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, title), h('div', { class: 'knobs' }, ['a', 'd', 's', 'r'].map((k) => kn(`${e}.${k}`, k))));
-  const lfo = (l, title) => h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, title),
-    h('div', { class: 'row' }, sel(`${l}.wave`, [['sine', 'Sinus'], ['triangle', 'Triangle'], ['square', 'Carré'], ['sawtooth', 'Dent de scie']]), sel(`${l}.dest`, LFO_DESTS)),
-    h('div', { class: 'knobs' }, kn(`${l}.rate`, 'rate'), kn(`${l}.depth`, 'depth')));
-  v.append(presetBar,
+  const env = (e, title, color) => {
+    const ed = envEditor(() => synth.patch[e], (k, x) => { setPatchParam(part, `${e}.${k}`, x); controls.get(`${part}.${e}.${k}`)?.el.setValue(x, true); }, color); redraws.push(ed.redraw);
+    return h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, title), ed, h('div', { class: 'knobs' }, ['a', 'd', 's', 'r'].map((k) => kn(`${e}.${k}`, k))));
+  };
+  const lfo = (l, title) => {
+    const i = l === 'lfo1' ? 0 : 1, setShape = (pts) => { const was = synth.patch[l].wave; setPatchParam(part, `${l}.shape`, pts); if (was !== 'custom') { setPatchParam(part, `${l}.wave`, 'custom'); const s0 = document.querySelector(`.view-${part} [data-lfowave="${l}"]`); if (s0) s0.value = 'custom'; } };
+    const waveSel = sel(`${l}.wave`, [['sine', 'Sinus'], ['triangle', 'Triangle'], ['square', 'Carré'], ['sawtooth', 'Dent de scie'], ['custom', 'Dessinée']]); waveSel.dataset.lfowave = l;
+    return h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, title, h('span', { class: 'hint' }, 'glisse les points · double-touche = ajouter / retirer')),
+      lfoEditor(() => synth.patch[l], setShape, () => synth.lfoPhase(i)),
+      h('div', { class: 'chips' }, SHAPE_NAMES.map(([k, n]) => h('button', { class: 'chip small', onclick: () => setShape(SHAPES[k]) }, n))),
+      h('div', { class: 'row' }, waveSel, h('label', { class: 'fxsel' }, 'Cible directe', sel(`${l}.dest`, LFO_DESTS))),
+      h('div', { class: 'knobs' }, kn(`${l}.rate`, 'rate'), kn(`${l}.depth`, 'depth')));
+  };
+  const addMod = (src, dst) => { synth.set('mods', [...(synth.patch.mods || []), { src, dst, amt: 0.5 }]); S[part] = synth.patch; renderSynth(part); toast('Modulation ajoutée — règle la quantité dans la matrice'); };
+  v.append(presetBar, modSourceBar(part, addMod),
     h('div', { class: 'synth' },
       osc('oscA', 'OSC A'), osc('oscB', 'OSC B'), osc('oscC', 'OSC C'),
       h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'MACROS'), h('div', { class: 'knobs' }, [0, 1, 2, 3].map((i) => kn(`macros.${i}`, 'macro'))),
@@ -899,7 +912,7 @@ function renderSynth(part) {
       h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'FILTRE 2', tog('filter2.on', 'ON')),
         h('div', { class: 'row' }, sel('filter2.type', FILTER_TYPES), sel('filter2.route', [['serial', 'En série (après le 1)'], ['parallel', 'En parallèle']])),
         h('div', { class: 'knobs' }, kn('filter2.cutoff', 'filter.cutoff'), kn('filter2.res', 'filter.res'), kn('filter2.envAmt', 'filter.envAmt'), kn('filter2.keytrack', 'filter.keytrack'))),
-      env('ampEnv', 'ENVELOPPE AMPLI'), env('filtEnv', 'ENVELOPPE FILTRE (env. 2)'), env('modEnv', 'ENVELOPPE 3 (modulation)'),
+      env('ampEnv', 'ENVELOPPE AMPLI', '--white'), env('filtEnv', 'ENVELOPPE FILTRE (env. 2)', '--org'), env('modEnv', 'ENVELOPPE 3 (modulation)', '--yellow'),
       lfo('lfo1', 'LFO 1'), lfo('lfo2', 'LFO 2'),
       h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'LFO WAVETABLE (morphing)'), h('div', { class: 'knobs' }, kn('wtLfo.rate', 'rate'), kn('wtLfo.depth', 'depth'))),
       h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'VOIX', tog('mono', 'MONO / LEGATO')), h('div', { class: 'knobs' }, kn('glide'), kn('volume'), kn('pan'), kn('velSens'))),
@@ -908,7 +921,7 @@ function renderSynth(part) {
     keyboard(part),
     h('div', { id: 'roll-' + part, class: 'rollhost' }));
   drawRoll(document.getElementById('roll-' + part) || v.querySelector('#roll-' + part), part);
-  drawWaves();
+  drawWaves(); decorateMods(part, P.mods);
 }
 function stepPreset(part, dir) {
   const L = synthOf(part).patch.lib; if (L) return loadLib(part, L.g, L.role, (L.n + dir + PER_BUCKET) % PER_BUCKET);
