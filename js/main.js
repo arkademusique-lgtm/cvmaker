@@ -10,6 +10,7 @@ import { Midi } from './midi.js';
 import { BleLink, HidLink, GamepadLink, RawDecoder, hidCode } from './ble.js';
 import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
 import { PRESETS, PRESET_CATS, presetCat, FX_CHAINS } from './presets.js';
+import { GENRES, GENRE_IDS, ROLES, PER_BUCKET, LIBRARY_SIZE, genrePreset, genreGroove } from './genres.js';
 import * as db from './storage.js';
 import { h, knob, button, select, toggle, toast, controls, registerControl, setLearnHandler, pickFile } from './ui.js';
 import { clamp, deepClone, noteName, NOTE_NAMES, uid, encodeWav, download, abToB64, b64ToAb, pick, rand } from './util.js';
@@ -474,10 +475,12 @@ function renderPlay() {
       ...[1, 2, 4, 8].map((n) => { const b = button('⟳' + n, () => setLooper(n), { title: 'Looper ' + n }); b.dataset.looper = n; if (S.looper === n) b.classList.add('on'); return b; }),
       button('FX1', () => fxToggle('fx1')), button('FX2', () => fxToggle('fx2'))));
   v.append(top);
+  v.append(genreStarter());
   if (isSynth) {
+    v.append(presetBrowser(PL.part));
     const synth = synthOf(PL.part), cat = PL.cat || 'all', all = [...PRESETS, ...userPresets()].filter((p) => cat === 'all' || presetCat(p.name) === cat);
-    v.append(h('div', { class: 'chips cats' }, PRESET_CATS.map(([k, l]) => h('button', { class: `chip small ${k === cat ? 'on' : ''}`, onclick: () => set('cat', k) }, l))));
-    v.append(h('div', { class: 'chips' }, button('🎲', () => { randomSound(); renderPlay(); }, { cls: 'accent' }),
+    if (libOf(PL.part).g === 'classic') v.append(h('div', { class: 'chips cats' }, PRESET_CATS.map(([k, l]) => h('button', { class: `chip small ${k === cat ? 'on' : ''}`, onclick: () => set('cat', k) }, l))));
+    if (libOf(PL.part).g === 'classic') v.append(h('div', { class: 'chips' }, button('🎲', () => { randomSound(); renderPlay(); }, { cls: 'accent' }),
       all.map((p) => h('button', { class: `chip ${p.name === synth.patch.name ? 'on' : ''}`, onclick: () => { synth.setPatch(p); S[PL.part] = synth.patch; renderSynth(PL.part); renderPlay(); } }, p.name))));
     const optsBox = h('details', { class: 'playopts', open: db.ls.get('playOpts', innerWidth > 700) }, h('summary', {}, `⚙️ ${['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][PL.root]} ${SCALES[PL.scale][0]} · C${PL.octs[PL.part]}${PL.chord ? ' · accords' : ''}${PL.arp !== 'off' ? ' · arpège' : ''}${PL.latch ? ' · maintien' : ''} — réglages`));
     optsBox.addEventListener('toggle', () => db.ls.set('playOpts', optsBox.open));
@@ -501,6 +504,63 @@ function renderPlay() {
     v.append(perfStrip());
     v.append(drumPads(false));
   }
+}
+
+
+// ---------------------------------------------------------------- 100 000 genre presets
+const libOf = (part) => ((PL.libs ||= {})[part] ||= { g: 'classic', role: part === 'bass' ? 'bass' : 'lead', n: 0 });
+const favs = () => db.ls.get('favs', []);
+function loadLib(part, g, role, n) {
+  const p = genrePreset(g, role, n), sy = synthOf(part); Object.assign(libOf(part), { g, role, n }); savePlay();
+  sy.setPatch(p); S[part] = sy.patch; renderSynth(part); if (S.tab === 'play') renderPlay(); refreshDevice(); toast(p.name);
+}
+function presetBrowser(part) {
+  const L = libOf(part), cur = synthOf(part).patch.name;
+  const wrap = h('div', { class: 'libbox' });
+  const genreRow = h('div', { class: 'chips' }, h('span', { class: 'libcount' }, `${LIBRARY_SIZE.toLocaleString('fr-FR')} presets`),
+    h('button', { class: `chip small ${L.g === 'classic' ? 'on' : ''}`, onclick: () => { L.g = 'classic'; savePlay(); rerender(); } }, 'Classiques'),
+    GENRE_IDS.map((g) => h('button', { class: `chip small ${L.g === g ? 'on' : ''}`, onclick: () => { L.g = g; savePlay(); loadLib(part, g, L.role, L.n); } }, GENRES[g].name)));
+  wrap.append(genreRow);
+  const rerender = () => { if (S.tab === 'play') renderPlay(); else renderSynth(part); };
+  if (L.g !== 'classic') {
+    const go = (n) => loadLib(part, L.g, L.role, ((n % PER_BUCKET) + PER_BUCKET) % PER_BUCKET);
+    const num = h('input', { type: 'number', min: 1, max: PER_BUCKET, value: L.n + 1, class: 'libnum', 'aria-label': 'Numéro du preset' });
+    num.addEventListener('change', () => go((parseInt(num.value, 10) || 1) - 1));
+    const isFav = favs().some((f) => f.g === L.g && f.role === L.role && f.n === L.n);
+    wrap.append(h('div', { class: 'chips' }, ROLES.map(([r, l]) => h('button', { class: `chip small ${L.role === r ? 'on' : ''}`, onclick: () => loadLib(part, L.g, r, L.n) }, l)),
+      h('div', { class: 'seg libnav' }, button('◀', () => go(L.n - 1), { title: 'Preset précédent', learn: `${part}.libPrev` }), num, h('span', { class: 'hint' }, `/ ${PER_BUCKET}`), button('▶', () => go(L.n + 1), { title: 'Preset suivant', learn: `${part}.libNext` }),
+        button('🎲', () => go(Math.floor(Math.random() * PER_BUCKET)), { title: 'Preset au hasard', cls: 'accent' }),
+        h('button', { class: `btn ${isFav ? 'on' : ''}`, title: 'Favori', onclick: () => { const f = favs().filter((x) => !(x.g === L.g && x.role === L.role && x.n === L.n)); if (!isFav) f.unshift({ g: L.g, role: L.role, n: L.n, name: cur }); db.ls.set('favs', f.slice(0, 200)); rerender(); } }, isFav ? '★ Favori' : '☆ Favori'))));
+    const list = h('div', { class: 'chips' }); for (let i = 0; i < 12; i++) { const n = (L.n - (L.n % 12) + i) % PER_BUCKET, p = genrePreset(L.g, L.role, n); list.append(h('button', { class: `chip ${n === L.n && cur === p.name ? 'on' : ''}`, onclick: () => go(n) }, p.name.replace(/^\S+ /, ''))); }
+    wrap.append(list);
+  }
+  const fl = favs(); if (fl.length) wrap.append(h('div', { class: 'chips' }, h('span', { class: 'libcount' }, '★'), fl.slice(0, 30).map((f) => h('button', { class: `chip small ${cur === f.name ? 'on' : ''}`, onclick: () => loadLib(part, f.g, f.role, f.n) }, f.name))));
+  return wrap;
+}
+/** One tap: tempo, swing, scale, kit, genre groove, bass + lead sounds and FX chain. */
+async function startGenre(g, { soundsToo = true } = {}) {
+  const G = GENRES[g]; pushUndo();
+  setBpm(G.bpm); S.swing = G.swing; seq.swing = G.swing; controls.get('hdr.swing')?.el.setValue(G.swing, true);
+  PL.scale = G.scale; savePlay();
+  const gr = genreGroove(g), p = pat(), deg = (d, part) => degNote(d, part);
+  p.drums = gr.drums;
+  p.bass.forEach((b) => Object.assign(b, { on: false, acc: false, slide: false }));
+  gr.bassDeg.forEach(([s, d], i) => Object.assign(p.bass[s], { on: true, note: deg(d, 'bass'), noteSet: true, acc: i === 0, slide: gr.slide && Math.random() < 0.3 }));
+  p.synth = p.synth.map(() => []); gr.leadDeg.forEach(([s, d]) => (p.synth[s] = [deg(d, 'lead')]));
+  if (soundsToo) {
+    const ki = S.kits.findIndex((k) => k.name === G.kit); if (ki >= 0) await loadKit(ki);
+    for (const [part, role] of [['bass', 'bass'], ['lead', 'lead']]) { const n = Math.floor(Math.random() * PER_BUCKET); Object.assign(libOf(part), { g, role, n }); const sy = synthOf(part); sy.setPatch(genrePreset(g, role, n)); S[part] = sy.patch; }
+    const ch = FX_CHAINS.find((c) => c.name === G.chain); if (ch) applyChain(ch);
+    savePlay(); renderSynth('lead'); renderSynth('bass');
+  }
+  S.genre = g; refreshPattern(); if (S.tab === 'play') renderPlay();
+  toast(`${G.name} — ${G.bpm} BPM${soundsToo ? ' · kit, groove, basse, lead et effets chargés' : ''}`);
+}
+function genreStarter() {
+  const box = h('details', { class: 'perfbox genrebox', open: db.ls.get('genreOpen', true) }, h('summary', {}, '🎚️ Démarrer un morceau — un genre en un geste'),
+    h('div', { class: 'chips wrap' }, GENRE_IDS.map((g) => h('button', { class: `chip ${S.genre === g ? 'on' : ''}`, onclick: () => startGenre(g) }, `${GENRES[g].name} · ${GENRES[g].bpm}`))));
+  box.addEventListener('toggle', () => db.ls.set('genreOpen', box.open));
+  return box;
 }
 
 // ---------------------------------------------------------------- virtual RM-808 (device view)
@@ -658,6 +718,7 @@ function renderSeq() {
     button('Coller', () => { if (S.clip) { S.patterns[S.cur] = deepClone(S.clip); refreshPattern(); } }),
     button('Effacer', () => { S.patterns[S.cur] = emptyPattern(p.name); refreshPattern(); }),
     button('🎲 Générer un groove', () => { randomGroove(); refreshPattern(); }, { cls: 'accent' }),
+    select([['', 'Groove d\'un genre…'], ...GENRE_IDS.map((g) => [g, GENRES[g].name])], '', (g) => g && startGenre(g, { soundsToo: false })),
     button('🎲 Kit', () => changeKit(S.kits.length - S.kitIdx)),
   );
   const grid = h('div', { class: 'grid' });
@@ -774,7 +835,7 @@ function rmBanner(part) {
 function renderSynth(part) {
   const v = views[part]; v.innerHTML = '';
   const synth = synthOf(part); const P = synth.patch;
-  v.append(rmBanner(part));
+  v.append(rmBanner(part), presetBrowser(part));
   const kn = (path, specKey) => {
     const sp = SPEC[specKey || path] || SPEC[path.split('.').pop()];
     return knob({ ...sp, value: getPath(P, path), def: getPath(DEFAULT_PATCH, path), onInput: (x) => { setPatchParam(part, path, x); if (path.endsWith('.pos') || path.endsWith('.table')) drawWaves(); }, learn: `${part}.${path}`, size: 'sm' });
@@ -819,6 +880,7 @@ function renderSynth(part) {
   drawWaves();
 }
 function stepPreset(part, dir) {
+  const L = synthOf(part).patch.lib; if (L) return loadLib(part, L.g, L.role, (L.n + dir + PER_BUCKET) % PER_BUCKET);
   const synth = synthOf(part); const i = PRESETS.findIndex((p) => p.name === synth.patch.name);
   const n = PRESETS[(i + dir + PRESETS.length) % PRESETS.length]; synth.setPatch(n); S[part] = synth.patch; renderSynth(part); toast(`Preset : ${n.name}`);
 }

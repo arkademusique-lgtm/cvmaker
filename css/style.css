@@ -297,3 +297,7 @@ label .ic, summary .ic, .ptitle .ic, b .ic, h3 .ic, h4 .ic, li .ic, .rmbanner .i
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 a { color: var(--blue); text-underline-offset: 3px; }
 .lbl { display: inline-flex; align-items: center; gap: .4em; } .lbl .ic { margin: 0; }
+.libbox { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.libcount { flex: none; align-self: center; font-size: 12px; font-weight: 800; color: var(--org); padding: 0 4px; font-variant-numeric: tabular-nums; }
+.libnav { flex: none; } .libnum { width: 70px; text-align: center; font-variant-numeric: tabular-nums; }
+.genrebox summary { color: var(--org); }
