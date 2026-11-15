@@ -11,7 +11,7 @@ import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
 import { PRESETS, PRESET_CATS, presetCat, FX_CHAINS } from './presets.js';
 import * as db from './storage.js';
 import { h, knob, button, select, toggle, toast, controls, registerControl, setLearnHandler, pickFile } from './ui.js';
-import { clamp, deepClone, noteName, uid, encodeWav, download, abToB64, b64ToAb, pick, rand } from './util.js';
+import { clamp, deepClone, noteName, NOTE_NAMES, uid, encodeWav, download, abToB64, b64ToAb, pick, rand } from './util.js';
 
 const engine = new Engine();
 const midi = new Midi();
@@ -61,7 +61,7 @@ const S = {
   octave: 4, bassOctave: 2, lastBassNote: 36,
   fx1: null, fx2: null, looper: 0, clearHeld: false, clearUsed: false,
   padBot: db.ls.get('padBot', 'select'), unmapped: db.ls.get('unmapped', 'lead'), followClock: db.ls.get('followClock', true),
-  tab: 'device', play: { part: 'lead', scale: 'minPent', root: 0, octs: { lead: 3, bass: 1 }, chord: 0, latch: false, arp: 'off', arpRate: 1, drums: false, layout: 'pads', ...db.ls.get('play', {}) }, clip: null, projectName: 'Mon projet',
+  keyHeld: {}, tab: 'device', play: { part: 'lead', scale: 'minPent', root: 0, octs: { lead: 3, bass: 1 }, chord: 0, latch: false, arp: 'off', arpRate: 1, drums: false, layout: 'pads', ...db.ls.get('play', {}) }, clip: null, projectName: 'Mon projet',
 };
 const audible = (i) => (S.solos.some(Boolean) ? S.solos[i] : !S.mutes[i]);
 const pat = () => S.patterns[S.cur];
@@ -148,7 +148,7 @@ function setLooper(n) {
   S.looper = S.looper === n ? 0 : n; seq.setLooper(S.looper);
   document.querySelectorAll('[data-looper]').forEach((b) => b.classList.toggle('on', +b.dataset.looper === S.looper));
 }
-function setKeyMode(m) { S.keyMode = m; refreshDevice(); }
+function setKeyMode(m) { Object.keys(S.keyHeld).forEach((k) => stepKeyRelease(+k)); S.keyMode = m; refreshDevice(); }
 function setPots(m) { S.pots = m; refreshDevice(); }
 function selectTrack(i) { S.sel = i; refreshDevice(); renderSeq(); }
 function toggleMute(i) { S.mutes[i] = !S.mutes[i]; applyKitMix(); refreshDevice(); renderSeq(); }
@@ -203,8 +203,10 @@ function tapTempo() {
 }
 function setSwing(v) { S.swing = clamp(v, 0, 0.75); seq.swing = S.swing; controls.get('hdr.swing')?.el.setValue(S.swing, true); toast(`Swing ${Math.round(S.swing * 100)}%`); }
 function shiftOct(d) {
-  if (S.keyMode === 'bass') { S.bassOctave = clamp(S.bassOctave + d, 0, 6); toast('Octave basse : C' + S.bassOctave); }
-  else { S.octave = clamp(S.octave + d, 0, 7); toast('Octave synthé : C' + S.octave); }
+  const part = S.keyMode === 'bass' ? 'bass' : S.keyMode === 'note' ? 'lead' : (S.tab === 'play' ? PL.part : 'lead');
+  if (part === 'drums') return;
+  PL.octs[part] = clamp(PL.octs[part] + d, 0, 6); savePlay(); toast(`Octave ${part === 'bass' ? 'basse' : 'synthé'} : C${PL.octs[part]}`);
+  renderDevice(); if (S.tab === 'play') renderPlay();
 }
 function copyPattern() { S.clip = deepClone(pat()); toast(`Pattern ${S.cur + 1} copié`); }
 function pastePattern() { if (!S.clip) return toast('Rien à coller'); pushUndo(); S.patterns[S.cur] = deepClone(S.clip); refreshPattern(); toast('Collé'); }
@@ -347,7 +349,7 @@ const CHEATS = `<div class="cheatgrid">
 <li><b>STEP / BASS / MIXER / FX</b> : ouvrir Séquenceur / Basse / Synthé / Effets</li></ul>
 <h4>Sans SHIFT</h4><ul><li><b>Double-appui sur un pas</b> : accent</li><li><b>HOLD TO CLEAR + pad</b> : efface cette piste</li><li><b>LOOPER maintenu</b> : répétition momentanée</li></ul></div>
 <div><h4>Mode NOTE (synthé) et KEY BASS</h4><ul>
-<li><b>16 touches</b> : jouer les notes (● REC + lecture = enregistre)</li><li><b>PATTERN &lt; &gt;</b> : octave − / +</li><li><b>DRUM KIT &lt; &gt;</b> : preset précédent / suivant</li>
+<li><b>16 touches</b> : les 16 notes de la gamme choisie (tonique en surbrillance) — ● REC + lecture = enregistre</li><li><b>Re-appui sur NOTE / KEY BASS</b> : notes seules → accords 3 notes → accords 4 notes</li><li><b>PATTERN &lt; &gt;</b> : octave − / +</li><li><b>DRUM KIT &lt; &gt;</b> : preset précédent / suivant</li>
 <li><b>12 potards</b> = macros du son : Cutoff · Réso · Env filtre · Drive · Attack · Decay · Sustain · Release · Wave · Détune · LFO · Volume</li>
 <li><b>Pads</b> : la batterie reste jouable</li><li>⇧ + PATTERN / DRUM KIT : retrouvent leur rôle normal</li></ul>
 <h4>Clavier d'ordinateur</h4><ul><li><b>Espace</b> lecture · <b>Maj+Espace</b> début</li><li><b>← →</b> pattern · <b>↑ ↓</b> kit</li><li><b>R</b> rec · <b>M</b> mute · <b>I</b> mode des touches</li>
@@ -364,8 +366,8 @@ const PL = S.play;
 const savePlay = () => db.ls.set('play', PL);
 const playActive = new Map(), playLatched = new Map();
 let arpSet = [], arpTimer = null, arpIdx = 0;
-function degNote(d) { const sc = SCALES[PL.scale][1], len = sc.length; return PL.root + (PL.octs[PL.part] + 1) * 12 + sc[((d % len) + len) % len] + 12 * Math.floor(d / len); }
-function chordDegs(d) { if (!PL.chord) return [d]; const st = PL.scale === 'chroma' ? [0, 4, 7, 11] : [0, 2, 4, 6]; return st.slice(0, PL.chord).map((x) => d + x); }
+function degNote(d, part = PL.part) { const sc = SCALES[PL.scale][1], len = sc.length; return PL.root + (PL.octs[part] + 1) * 12 + sc[((d % len) + len) % len] + 12 * Math.floor(d / len); }
+function chordDegs(d, n = PL.chord) { if (!n) return [d]; const st = PL.scale === 'chroma' ? [0, 4, 7, 11] : [0, 2, 4, 6]; return st.slice(0, n).map((x) => d + x); }
 function liveNoteOn(part, n, vel) {
   synthOf(part).keyDown(n, vel); if (part === 'bass') S.lastBassNote = n;
   if (S.rec && seq.playing) { const p = pat(), st = recStep(); if (part === 'lead') { if (!p.synth[st].includes(n)) p.synth[st].push(n); } else Object.assign(p.bass[st], { on: true, note: n, noteSet: true }); renderRolls(); refreshSteps(); }
@@ -375,15 +377,17 @@ function arpTick() {
   let order = [...new Set(arpSet)].sort((a, b) => a - b);
   if (PL.arp === 'down') order.reverse(); if (PL.arp === 'updown' && order.length > 2) order = [...order, ...order.slice(1, -1).reverse()];
   const n = PL.arp === 'rand' ? pick(order) : order[arpIdx++ % order.length], dur = seq.stepDur * PL.arpRate;
-  synthOf(PL.part).play(n, 0.85, engine.now, dur * 0.8); if (PL.part === 'bass') S.lastBassNote = n;
+  synthOf(arpPart).play(n, 0.85, engine.now, dur * 0.8); if (arpPart === 'bass') S.lastBassNote = n;
   arpTimer = setTimeout(arpTick, dur * 1000);
 }
-function startNotes(d, vel) {
-  const notes = chordDegs(d).map(degNote).filter((n) => n >= 0 && n <= 127);
-  if (PL.arp !== 'off') { arpSet.push(...notes); if (!arpTimer) { arpIdx = 0; arpTick(); } } else notes.forEach((n) => liveNoteOn(PL.part, n, vel));
+let arpPart = 'lead';
+const chordOf = (part) => (part === 'bass' ? PL.chordBass || 0 : PL.chord);
+function startNotes(d, vel, part = PL.part) {
+  const notes = chordDegs(d, chordOf(part)).map((x) => degNote(x, part)).filter((n) => n >= 0 && n <= 127);
+  if (PL.arp !== 'off') { arpPart = part; arpSet.push(...notes); if (!arpTimer) { arpIdx = 0; arpTick(); } } else notes.forEach((n) => liveNoteOn(part, n, vel));
   return notes;
 }
-function stopNotes(notes) { if (PL.arp !== 'off') notes.forEach((n) => { const i = arpSet.indexOf(n); if (i >= 0) arpSet.splice(i, 1); }); else notes.forEach((n) => synthOf(PL.part).keyUp(n)); }
+function stopNotes(notes, part = PL.part) { if (PL.arp !== 'off') notes.forEach((n) => { const i = arpSet.indexOf(n); if (i >= 0) arpSet.splice(i, 1); }); else notes.forEach((n) => synthOf(part).keyUp(n)); }
 function playPanic() {
   engine.perf?.stopAll(); document.querySelectorAll('.perfpad.down').forEach((e) => e.classList.remove('down'));
   playActive.clear(); playLatched.clear(); arpSet = []; clearTimeout(arpTimer); arpTimer = null;
@@ -435,7 +439,7 @@ function xyPad() {
 }
 function renderPlay() {
   const v = views.play; if (!v) return; playPanic(); v.innerHTML = '';
-  const set = (k, val) => { PL[k] = val; savePlay(); renderPlay(); };
+  const set = (k, val) => { PL[k] = val; savePlay(); renderPlay(); renderDevice(); };
   const seg = (opts, cur, fn, cls = '') => h('div', { class: `seg ${cls}` }, opts.map(([val, label]) => h('button', { class: `btn ${val === cur ? 'on' : ''}`, onclick: () => fn(val) }, label)));
   const isSynth = PL.part !== 'drums';
   const top = h('div', { class: 'playbar' },
@@ -492,14 +496,9 @@ function stepKeyPress(k, v = 1) {
   const p = pat();
   if (sh()) { useShift(); return SHORTCUTS[k][1](); }
   if (S.keyMode === 'pattern') return selectPattern(k);
-  if (S.keyMode === 'note') {
-    const n = S.octave * 12 + 12 + k; engine.leadSynth.keyDown(n, v);
-    if (S.rec && seq.playing) { const st = recStep(); if (!p.synth[st].includes(n)) p.synth[st].push(n); renderRolls(); }
-    return;
-  }
-  if (S.keyMode === 'bass') {
-    const n = S.bassOctave * 12 + 12 + k; S.lastBassNote = n; engine.bassSynth.keyDown(n, v);
-    if (S.rec && seq.playing) { const st = recStep(); Object.assign(p.bass[st], { on: true, note: n, noteSet: true }); refreshSteps(); renderRolls(); }
+  if (synthMode()) { // the 16 keys = 16 notes of the chosen scale (or chords), recorded when REC + play
+    const part = partForMode(); if (S.keyHeld[k]) stopNotes(S.keyHeld[k].notes, S.keyHeld[k].part);
+    S.keyHeld[k] = { part, notes: startNotes(k, v, part) }; void p;
     return;
   }
   if (S.clearHeld) { S.clearUsed = true; }
@@ -509,8 +508,16 @@ function stepKeyPress(k, v = 1) {
   renderRolls();
 }
 function stepKeyRelease(k) {
-  if (S.keyMode === 'note') engine.leadSynth.keyUp(S.octave * 12 + 12 + k);
-  if (S.keyMode === 'bass') engine.bassSynth.keyUp(S.bassOctave * 12 + 12 + k);
+  const held = S.keyHeld[k]; if (!held) return; S.keyHeld[k] = null;
+  if (!PL.latch) stopNotes(held.notes, held.part);
+}
+/** NOTE / KEY BASS: first press enters the mode, next presses cycle single notes → 3-note chords → 4-note chords. */
+function notesButton(mode) {
+  if (sh()) { useShift(); return setKeyMode(mode); }
+  if (S.keyMode !== mode) { setKeyMode(mode); return toast(`${mode === 'bass' ? 'BASSE' : 'SYNTHÉ'} : ${SCALES[PL.scale][0]} de ${NOTE_NAMES[PL.root]} · ${['notes seules', '', '', 'accords 3 notes', 'accords 4 notes'][chordOf(partForMode())]}`); }
+  const key = mode === 'bass' ? 'chordBass' : 'chord', next = { 0: 3, 3: 4, 4: 0 }[PL[key] || 0];
+  PL[key] = next; savePlay(); renderDevice(); if (S.tab === 'play') renderPlay();
+  toast(next ? `Accords ${next} notes` : 'Notes seules');
 }
 function padTop(i, v) {
   if (sh()) { useShift(); toggleMute(i); return toast(`${TRACKS[i]} ${S.mutes[i] ? 'muté' : 'actif'}`); }
@@ -535,7 +542,7 @@ function renderDevice() {
     devBtn('● REC', 'dev.rec', () => (sh() ? (useShift(), toggleRecord()) : setRec()), null, 'wide rec-btn'),
     h('div', { class: 'spacer' }),
     devBtn('HOLD TO CLEAR', 'dev.clear', clearPress, clearRelease, 'small'),
-    h('div', { class: 'row2' }, devBtn('STEP', 'dev.modeStep', () => setKeyMode('step'), null, 'small mode-step'), devBtn('KEY BASS', 'dev.modeBass', () => setKeyMode('bass'), null, 'small mode-bass')));
+    h('div', { class: 'row2' }, devBtn('STEP', 'dev.modeStep', () => setKeyMode('step'), null, 'small mode-step'), devBtn('KEY BASS', 'dev.modeBass', () => notesButton('bass'), null, 'small mode-bass')));
   const ctrl = h('div', { class: 'dev-ctrl' },
     h('div', { class: 'grp' }, h('label', {}, 'DRUM KIT'), devBtn('<', 'dev.kitPrev', () => kitNav(-1)), devBtn('>', 'dev.kitNext', () => kitNav(1))),
     h('div', { class: 'grp' }, h('label', {}, 'PATTERN'), devBtn('<', 'dev.patPrev', () => patNav(-1)), devBtn('>', 'dev.patNext', () => patNav(1))),
@@ -550,14 +557,20 @@ function renderDevice() {
   }));
   const right = h('div', { class: 'dev-right' },
     h('label', {}, 'EFFECTS'), h('div', { class: 'row2' }, devBtn('FX1', 'dev.fx1', () => (sh() ? (useShift(), cycleFx('fx1')) : fxToggle('fx1')), null, 'fx1'), devBtn('FX2', 'dev.fx2', () => (sh() ? (useShift(), cycleFx('fx2')) : fxToggle('fx2')), null, 'fx2')),
-    h('div', { class: 'row2' }, devBtn('STEP', 'dev.modeStep2', () => setKeyMode(S.keyMode === 'pattern' ? 'step' : S.keyMode === 'step' ? 'pattern' : 'step'), null, 'mode-step2'), devBtn('NOTE', 'dev.modeNote', () => setKeyMode('note'), null, 'mode-note')),
+    h('div', { class: 'row2' }, devBtn('STEP', 'dev.modeStep2', () => setKeyMode(S.keyMode === 'pattern' ? 'step' : S.keyMode === 'step' ? 'pattern' : 'step'), null, 'mode-step2'), devBtn('NOTE', 'dev.modeNote', () => notesButton('note'), null, 'mode-note')),
     h('label', {}, 'LOOPER'),
     [1, 2, 4, 8].map((n) => { let t0; const b = devBtn(String(n), `dev.loop.${n}`, () => { if (sh()) { useShift(); t0 = Infinity; return fillTrack(n); } t0 = performance.now(); setLooper(n); }, () => { if (performance.now() - t0 > 350 && S.looper === n) setLooper(n); }, 'loop'); b.dataset.looper = n; return b; }));
   const status = h('div', { class: 'dev-status', id: 'devStatus' });
   const opts = h('div', { class: 'dev-opts' },
     h('label', {}, 'Rangée basse des pads : ', select([['select', 'Sélectionner la piste'], ['mute', 'Mute / unmute']], S.padBot, (x) => { S.padBot = x; db.ls.set('padBot', x); })),
-    h('label', {}, 'Octave NOTE : ', select([1, 2, 3, 4, 5, 6].map((o) => [String(o), 'C' + o]), String(S.octave), (x) => (S.octave = +x))),
-    h('label', {}, 'Octave KEY BASS : ', select([0, 1, 2, 3, 4].map((o) => [String(o), 'C' + o]), String(S.bassOctave), (x) => (S.bassOctave = +x))),
+    h('div', { class: 'scalebox' }, h('b', {}, '🎹 Touches 1-16 en NOTE / KEY BASS :'),
+      h('label', {}, 'Tonique ', select(NOTE_NAMES.map((n, i) => [String(i), n]), String(PL.root), (x) => { PL.root = +x; savePlay(); refreshDevice(); })),
+      h('label', {}, 'Gamme ', select(Object.entries(SCALES).map(([k, [l]]) => [k, l]), PL.scale, (x) => { PL.scale = x; savePlay(); refreshDevice(); })),
+      h('label', {}, 'Synthé ', select([['0', 'Notes seules'], ['3', 'Accords 3 notes'], ['4', 'Accords 4 notes']], String(PL.chord), (x) => { PL.chord = +x; savePlay(); })),
+      h('label', {}, 'Basse ', select([['0', 'Notes seules'], ['3', 'Accords 3 notes'], ['4', 'Accords 4 notes']], String(PL.chordBass || 0), (x) => { PL.chordBass = +x; savePlay(); })),
+      h('label', {}, 'Oct. synthé ', select([0, 1, 2, 3, 4, 5, 6].map((o) => [String(o), 'C' + o]), String(PL.octs.lead), (x) => { PL.octs.lead = +x; savePlay(); refreshDevice(); })),
+      h('label', {}, 'Oct. basse ', select([0, 1, 2, 3, 4].map((o) => [String(o), 'C' + o]), String(PL.octs.bass), (x) => { PL.octs.bass = +x; savePlay(); refreshDevice(); })),
+      button('🎹 Assigner les touches du RM-808 (1 min)', () => startWizard('notes'), { cls: 'accent' })),
     button('🔵 Connecter le RM-808 (Bluetooth)', connectBle, { cls: 'accent' }),
     button('🧭 Assistant de mapping RM-808', () => startWizard(), { cls: 'accent' }),
     h('span', { class: 'hint' }, 'Astuce : double-appui (ou clic droit) sur une touche de pas = accent. Maintiens MENU (ou Maj) pour les raccourcis. Tout bouton ou potard de l\'appli peut être assigné à ton RM-808 via l\'onglet MIDI.'));
@@ -571,7 +584,7 @@ function refreshDevice() {
   if (!devEls.pots) return;
   devEls.pots.forEach((k, i) => { k.setValue(potGet(i), true); k.querySelector('.knob-label')?.remove(); k.dataset.label = potLabel(i); k.classList.toggle('muted', !audible(i)); });
   document.body.classList.toggle('shift-on', sh());
-  devEls.steps.forEach((b, k) => { b.textContent = sh() ? SHORTCUTS[k][0] : String(k + 1); });
+  devEls.steps.forEach((b, k) => { const part = partForMode(); b.textContent = sh() ? SHORTCUTS[k][0] : synthMode() ? chordDegs(k, chordOf(part)).map((d) => noteName(degNote(d, part)).replace(/-?\d+$/, '')).join(' ') + (chordOf(part) ? '' : '') : String(k + 1); b.classList.toggle('notekey', synthMode() && !sh()); b.classList.toggle('rootkey', synthMode() && !sh() && ((degNote(k, part) - PL.root) % 12 + 12) % 12 === 0); });
   document.querySelectorAll('.menu-btn').forEach((b) => b.classList.toggle('on', sh()));
   devEls.bot.forEach((b, i) => { b.classList.toggle('sel', i === S.sel); b.classList.toggle('muted', !audible(i)); });
   document.querySelectorAll('.dbtn[class*="pots-"]').forEach((b) => b.classList.toggle('on', b.classList.contains('pots-' + S.pots)));
@@ -1130,8 +1143,8 @@ const WIZ_ALL = [
   ['dev.fx1', 'FX1'], ['dev.fx2', 'FX2'], ['dev.modeStep2', 'STEP (à droite)'], ['dev.modeNote', 'NOTE'],
   ['dev.loop.1', 'LOOPER 1'], ['dev.loop.2', 'LOOPER 2'], ['dev.loop.4', 'LOOPER 4'], ['dev.loop.8', 'LOOPER 8'],
 ];
-function startWizard() {
-  const WIZ = rmProfile() ? WIZ_ALL.filter(([id]) => id !== 'dev.tempo' && !id.startsWith('dev.pot.')) : WIZ_ALL;
+function startWizard(only) {
+  const WIZ = only === 'notes' ? WIZ_ALL.filter(([id]) => id.startsWith('dev.step.') || ['dev.modeNote', 'dev.modeBass', 'dev.modeStep', 'dev.modeStep2', 'dev.menu', 'dev.play'].includes(id)) : rmProfile() ? WIZ_ALL.filter(([id]) => id !== 'dev.tempo' && !id.startsWith('dev.pot.')) : WIZ_ALL;
   if (!ble.connected && (!midi.supported || !midi.inputs.length)) toast('Aucune entrée MIDI détectée — connecte le RM-808 (Bluetooth MIDI ou USB) d\'abord.');
   showTab('device'); let i = 0;
   const box = h('div', { class: 'wizard' }); document.body.append(box);
