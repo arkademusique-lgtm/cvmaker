@@ -1,4 +1,6 @@
 import { FxRack } from './fx.js';
+import { PerfFx } from './perf.js';
+import { loadWorklets, worklets } from './worklets.js';
 import { VOICES, playSample } from './drums.js';
 import { Synth } from './synth.js';
 
@@ -7,16 +9,20 @@ export const DRUM_TRACKS = 11;
 
 export class Engine {
   constructor() { this.ctx = null; this.samples = new Map(); this.chokes = new Map(); }
-  init() {
+  async init() {
     if (this.ctx) return this.ctx.resume();
     const C = window.AudioContext || window.webkitAudioContext;
     const ctx = (this.ctx = new C({ latencyHint: 'interactive' }));
+    const resumed = ctx.resume(); // inside the user gesture (iOS)
     this.fxIn = ctx.createGain();
     this.master = ctx.createGain(); this.master.gain.value = 0.8;
     this.limiter = ctx.createDynamicsCompressor();
     this.limiter.threshold.value = -2; this.limiter.ratio.value = 20; this.limiter.attack.value = 0.002; this.limiter.release.value = 0.1; this.limiter.knee.value = 0;
     this.analyser = ctx.createAnalyser(); this.analyser.fftSize = 2048;
-    this.rack = new FxRack(ctx, this.fxIn, this.master);
+    worklets.ok = await loadWorklets(ctx);
+    this.perfIn = ctx.createGain();
+    this.rack = new FxRack(ctx, this.fxIn, this.perfIn);
+    this.perf = new PerfFx(ctx, this.perfIn, this.master);
     this.master.connect(this.limiter).connect(this.analyser).connect(ctx.destination);
     this.recDest = ctx.createMediaStreamDestination(); this.limiter.connect(this.recDest);
     this.drumBus = ctx.createGain(); this.drumBus.connect(this.fxIn);
