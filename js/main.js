@@ -825,7 +825,7 @@ async function importVitalFiles(part) {
   const list = userPresets(), stored = db.ls.get('userTables', {}); let first = null, ok = 0;
   for (const f of files) {
     try {
-      const { patch, tables } = importVital(await f.text(), f.name);
+      const { patch, tables } = importVital(await f.text(), f.name, S.bpm);
       for (const id of tables) stored[id] = exportUserTables()[id];
       list.unshift(patch); first ||= patch; ok++;
     } catch (e) { toast(`« ${f.name} » n'est pas un preset Vital lisible`); }
