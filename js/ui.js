@@ -1,4 +1,5 @@
 import { clamp } from './util.js';
+import { splitGlyph, icon } from './icons.js';
 
 export function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -10,7 +11,13 @@ export function h(tag, attrs = {}, ...kids) {
     else if (k === 'html') el.innerHTML = v;
     else el.setAttribute(k, v === true ? '' : v);
   }
-  for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c.nodeType ? c : document.createTextNode(String(c)));
+  for (const c of kids.flat(Infinity)) {
+    if (c == null || c === false) continue;
+    if (c.nodeType) { el.append(c); continue; }
+    const str = String(c), g = splitGlyph(str);
+    if (g) { const sp = document.createElement('span'); sp.className = 'lbl'; sp.innerHTML = g[0].map((n) => icon(n)).join(''); if (g[1]) sp.append(document.createTextNode(g[1])); el.append(sp); continue; }
+    el.append(document.createTextNode(str));
+  }
   return el;
 }
 

@@ -3,6 +3,7 @@ import { VOICES } from './audio/drums.js';
 import { DEFAULT_PATCH, mergePatch, LFO_DESTS } from './audio/synth.js';
 import { FX_TYPES, FX_CATS } from './audio/fx.js';
 import { PERF } from './audio/perf.js';
+import { iconizeHtml } from './icons.js';
 import { TABLES, tableOptions, framesAt, N as WT_N, setCustomFrames, importWavetable, exportUserTables, importUserTables } from './audio/wavetables.js';
 import { Sequencer, emptyPattern } from './sequencer.js';
 import { Midi } from './midi.js';
@@ -359,7 +360,7 @@ function drawScope() {
 }
 
 
-const CHEATS = `<div class="cheatgrid">
+const CHEATS = iconizeHtml(`<div class="cheatgrid">
 <div><h4>MENU = touche SHIFT ⇧</h4><ul>
 <li><b>MENU bref</b> : onglet suivant</li><li><b>MENU maintenu + …</b> : raccourci</li><li><b>MENU long seul</b> : verrouille SHIFT (re-MENU pour quitter)</li><li>Au clavier d'ordi : touche <b>Maj</b></li></ul>
 <h4>⇧ + touches de pas 1 → 16</h4><ol>
@@ -377,7 +378,7 @@ const CHEATS = `<div class="cheatgrid">
 <li><b>12 potards</b> = macros du son : Cutoff · Réso · Env filtre · Drive · Attack · Decay · Sustain · Release · Wave · Détune · LFO · Volume</li>
 <li><b>Pads</b> : la batterie reste jouable</li><li>⇧ + PATTERN / DRUM KIT : retrouvent leur rôle normal</li></ul>
 <h4>Clavier d'ordinateur</h4><ul><li><b>Espace</b> lecture · <b>Maj+Espace</b> début</li><li><b>← →</b> pattern · <b>↑ ↓</b> kit</li><li><b>R</b> rec · <b>M</b> mute · <b>I</b> mode des touches</li>
-<li><b>N</b> groove · <b>B</b> kit · <b>C / V</b> copier / coller · <b>Q</b> annuler</li><li><b>A W S E D F T G Y H U J K</b> notes · <b>Z / X</b> octave</li><li><b>1 2 3 … 9 0</b> : changer d'onglet (1 = Jouer)</li></ul></div></div>`;
+<li><b>N</b> groove · <b>B</b> kit · <b>C / V</b> copier / coller · <b>Q</b> annuler</li><li><b>A W S E D F T G Y H U J K</b> notes · <b>Z / X</b> octave</li><li><b>1 2 3 … 9 0</b> : changer d'onglet (1 = Jouer)</li></ul></div></div>`);
 
 
 // ---------------------------------------------------------------- PLAY view (touch performance: tablet / phone / mouse)
@@ -494,7 +495,7 @@ function renderPlay() {
     if (PL.drums) v.append(drumPads(true));
     v.append(h('div', { class: 'playsurf' }, PL.layout === 'piano' ? keyboard(PL.part) : notePads(), xyPad()));
   } else {
-    v.append(h('div', { class: 'playbar opts' }, button('◀ Kit', () => changeKit(-1)), h('span', { class: 'patchname' }, S.kit.name), button('Kit ▶', () => changeKit(1)), button('🎲 Kit', () => changeKit(S.kits.length - S.kitIdx), { cls: 'accent' }),
+    v.append(h('div', { class: 'playbar opts' }, button('Kit ◀', () => changeKit(-1)), h('span', { class: 'patchname' }, S.kit.name), button('Kit ▶', () => changeKit(1)), button('🎲 Kit', () => changeKit(S.kits.length - S.kitIdx), { cls: 'accent' }),
       h('span', { class: 'hint' }, 'Haut du pad = fort, bas = doux. ● REC + lecture = enregistre dans le pattern.')));
     v.append(perfStrip());
     v.append(drumPads(false));
@@ -601,7 +602,7 @@ function renderDevice() {
   v.append(h('div', { class: 'device' },
     h('div', { class: 'dev-title' }, h('b', {}, 'RM-808'), h('span', {}, 'RHYTHM MAKER — contrôleur virtuel')),
     knobs, h('div', { class: 'dev-mid' }, left, h('div', { class: 'dev-center' }, pads, ctrl, steps), right), status), opts,
-    h('details', { class: 'panel cheats', open: true, html: '<summary>⌨️ Raccourcis du RM-808</summary>' + CHEATS }));
+    h('details', { class: 'panel cheats', open: true, html: iconizeHtml('<summary>⌨️ Raccourcis du RM-808</summary>') + CHEATS }));
   refreshDevice();
 }
 function refreshDevice() {
@@ -959,7 +960,7 @@ function perfPads(cls = '') {
   return grid;
 }
 function perfStrip() {
-  const box = h('details', { class: 'perfbox', open: db.ls.get('perfOpen', true) }, h('summary', {}, '⚡ Effets live — maintiens un pad'), perfPads('compact'));
+  const box = h('details', { class: 'perfbox', open: db.ls.get('perfOpen', innerWidth > 700) }, h('summary', {}, '⚡ Effets live — maintiens un pad'), perfPads('compact'));
   box.addEventListener('toggle', () => db.ls.set('perfOpen', box.open));
   return box;
 }
@@ -1250,7 +1251,7 @@ function toggleRecord() {
 }
 
 function renderHelp() {
-  views.help.innerHTML = `<div class="panel help">
+  views.help.innerHTML = iconizeHtml(`<div class="panel help">
   <h2>RM-808 Studio — guide rapide</h2>
   <h3>1. Connecter ton RM-808</h3>
   <ul><li>Allume le RM-808 et associe-le en <b>Bluetooth MIDI</b> (ou USB) à ton appareil.
@@ -1280,7 +1281,7 @@ function renderHelp() {
   <li><b>Synthé</b> : 2 oscillateurs wavetable (15 tables + dessin libre + import de wavetables WAV façon Serum/Vital), unisson 9 voix, FM, sub, bruit, filtre multimode avec drive, 2 enveloppes, 2 LFO, LFO de wavetable, mono/glide, 25 presets d'instruments (cordes, piano FM, cloches, orgue, flûte, basses, leads, pads…) + aléatoire + presets perso.</li>
   <li><b>Effets</b> : rack illimité — distorsion, bitcrusher, filtre à LFO, EQ, chorus, flanger, phaser, delay ping-pong synchro, réverbe, compresseur, trémolo/auto-pan, trance gate, ring mod, tape wobble, élargisseur stéréo.</li></ul>
   <h3>Plugins & rapidité</h3><ul><li><b>31 plugins d'effets</b> en 7 familles, ajoutés en un geste ; <b>12 chaînes prêtes</b> (Club, Lo-fi, Dub, Techno, Ambient, Vaporwave…) qui remplacent tout le rack d'un coup ; 🎲 sur chaque effet pour des réglages aléatoires ; cartes repliables.</li><li><b>⚡ Effets live</b> (onglets Jouer et Effets) : maintiens un pad pour appliquer — répétition 1/4 à 1/32, filtres qui montent/descendent, tape stop, reverse, réverbe / écho « throw », hachoir, crush. Chaque pad s'assigne à un bouton du RM-808 avec le mode Learn.</li><li><b>45 instruments</b> classés (Basses, Leads, Pads, Claviers, Plucks, FX) en un geste dans l'onglet Jouer.</li></ul>
-  <h3>Raccourcis</h3>${CHEATS}<p>Échap = sortir du mode Learn</p></div>`;
+  <h3>Raccourcis</h3>${CHEATS}<p>Échap = sortir du mode Learn</p></div>`);
 }
 
 // ---------------------------------------------------------------- boot
