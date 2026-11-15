@@ -1,6 +1,6 @@
 import { Engine, TRACKS, DRUM_TRACKS, wakeAudio } from './audio/engine.js';
 import { VOICES } from './audio/drums.js';
-import { DEFAULT_PATCH, mergePatch, LFO_DESTS } from './audio/synth.js';
+import { DEFAULT_PATCH, mergePatch, LFO_DESTS, WARPS, FILTER_TYPES, MOD_SRCS, MOD_DSTS } from './audio/synth.js';
 import { FX_TYPES, FX_CATS } from './audio/fx.js';
 import { PERF } from './audio/perf.js';
 import { iconizeHtml } from './icons.js';
@@ -806,12 +806,12 @@ function drawRoll(host, part) {
 }
 
 // ---------------------------------------------------------------- synth editor (lead & bass)
-const getPath = (o, path) => path.split('.').reduce((a, k) => a[k], o);
+const getPath = (o, path) => path.split('.').reduce((a, k) => a?.[k], o);
 const K = (label, min, max, extra = {}) => ({ label, min, max, ...extra });
 const SPEC = {
   pos: K('Position WT', 0, 1), oct: K('Octave', -3, 3, { step: 1, fmt: (v) => v.toFixed(0) }), semi: K('Demi-ton', -12, 12, { step: 1, fmt: (v) => v.toFixed(0) }),
   fine: K('Fin (ct)', -100, 100, { step: 1, fmt: (v) => v.toFixed(0) }), level: K('Niveau', 0, 1), unison: K('Unisson', 1, 9, { step: 1, fmt: (v) => v.toFixed(0) }),
-  detune: K('Désaccord', 0, 1), spread: K('Stéréo', 0, 1),
+  detune: K('Désaccord', 0, 1), spread: K('Stéréo', 0, 1), warpAmt: K('Warp', 0, 1), macro: K('Macro', 0, 1), modamt: K('Quantité', -1, 1),
   'sub.level': K('Sub', 0, 1), 'sub.oct': K('Oct sub', -2, -1, { step: 1, fmt: (v) => v.toFixed(0) }), 'noise.level': K('Bruit', 0, 1), fm: K('FM B→A', 0, 2),
   'filter.cutoff': K('Cutoff', 0, 1), 'filter.res': K('Réso', 0.1, 25), 'filter.drive': K('Drive', 0, 1), 'filter.envAmt': K('Env → filtre', -1, 1), 'filter.keytrack': K('Keytrack', 0, 1),
   a: K('Attack', 0.001, 5, { curve: 'exp', fmt: (v) => (v < 1 ? (v * 1000).toFixed(0) + 'ms' : v.toFixed(2) + 's') }), d: K('Decay', 0.01, 5, { curve: 'exp', fmt: (v) => (v < 1 ? (v * 1000).toFixed(0) + 'ms' : v.toFixed(2) + 's') }),
@@ -873,22 +873,37 @@ function renderSynth(part) {
     const cv = h('canvas', { class: 'wave', width: 260, height: 110, 'data-part': part, 'data-osc': w });
     return h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, title, tog(`${w}.on`, 'ON')),
       sel(`${w}.table`, tableOptions(), drawWaves), cv,
-      h('div', { class: 'knobs' }, kn(`${w}.pos`), kn(`${w}.level`), kn(`${w}.oct`), kn(`${w}.semi`), kn(`${w}.fine`), kn(`${w}.unison`), kn(`${w}.detune`), kn(`${w}.spread`)));
+      h('div', { class: 'knobs' }, kn(`${w}.pos`), kn(`${w}.level`), kn(`${w}.oct`), kn(`${w}.semi`), kn(`${w}.fine`), kn(`${w}.unison`), kn(`${w}.detune`), kn(`${w}.spread`)),
+      h('div', { class: 'row warprow' }, h('label', { class: 'fxsel' }, 'Warp', sel(`${w}.warp`, WARPS)), kn(`${w}.warpAmt`)));
   };
+  const rebuild = (fn) => { fn(); S[part] = synth.patch; renderSynth(part); };
+  const matrix = () => h('div', { class: 'panel wide' }, h('div', { class: 'ptitle' }, 'MATRICE DE MODULATION — n\'importe quelle source vers n\'importe quelle destination',
+      button('+ Modulation', () => rebuild(() => synth.set('mods', [...(P.mods || []), { src: 'lfo1', dst: 'cutoff1', amt: 0.3 }])), { cls: 'accent' })),
+    (P.mods || []).length ? h('div', { class: 'modrows' }, P.mods.map((m, i) => h('div', { class: 'modrow' },
+      select(MOD_SRCS, m.src, (x) => rebuild(() => { const ms = deepClone(P.mods); ms[i].src = x; synth.set('mods', ms); })), h('span', { class: 'hint' }, '→'),
+      select(MOD_DSTS, m.dst, (x) => rebuild(() => { const ms = deepClone(P.mods); ms[i].dst = x; synth.set('mods', ms); })),
+      kn(`mods.${i}.amt`, 'modamt'), button('✕', () => rebuild(() => synth.set('mods', P.mods.filter((_, j) => j !== i))), { title: 'Supprimer' }))))
+      : h('p', { class: 'hint' }, 'Aucune modulation. Exemple : Macro 1 → Cutoff filtre 1 pour ouvrir le filtre avec un seul potard, ou Env. 3 → Hauteur pour un « pitch drop ». Les macros s\'assignent au RM-808 avec le mode Learn.'));
   const env = (e, title) => h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, title), h('div', { class: 'knobs' }, ['a', 'd', 's', 'r'].map((k) => kn(`${e}.${k}`, k))));
   const lfo = (l, title) => h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, title),
     h('div', { class: 'row' }, sel(`${l}.wave`, [['sine', 'Sinus'], ['triangle', 'Triangle'], ['square', 'Carré'], ['sawtooth', 'Dent de scie']]), sel(`${l}.dest`, LFO_DESTS)),
     h('div', { class: 'knobs' }, kn(`${l}.rate`, 'rate'), kn(`${l}.depth`, 'depth')));
   v.append(presetBar,
     h('div', { class: 'synth' },
-      osc('oscA', 'OSC A'), osc('oscB', 'OSC B'),
+      osc('oscA', 'OSC A'), osc('oscB', 'OSC B'), osc('oscC', 'OSC C'),
+      h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'MACROS'), h('div', { class: 'knobs' }, [0, 1, 2, 3].map((i) => kn(`macros.${i}`, 'macro'))),
+        h('p', { class: 'hint' }, 'Chaque macro pilote ce que tu lui assignes dans la matrice.')),
       h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'SUB · BRUIT · FM'), h('div', { class: 'row' }, sel('sub.wave', [['sine', 'Sub sinus'], ['square', 'Sub carré'], ['triangle', 'Sub triangle']])), h('div', { class: 'knobs' }, kn('sub.level'), kn('sub.oct'), kn('noise.level'), kn('fm'))),
-      h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'FILTRE'), sel('filter.type', [['lowpass', 'Passe-bas'], ['highpass', 'Passe-haut'], ['bandpass', 'Passe-bande'], ['notch', 'Coupe-bande'], ['peaking', 'Peak']]),
+      h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'FILTRE 1'), sel('filter.type', FILTER_TYPES, () => renderSynth(part)),
         h('div', { class: 'knobs' }, kn('filter.cutoff'), kn('filter.res'), kn('filter.drive'), kn('filter.envAmt'), kn('filter.keytrack'))),
-      env('ampEnv', 'ENVELOPPE AMPLI'), env('filtEnv', 'ENVELOPPE FILTRE'),
+      h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'FILTRE 2', tog('filter2.on', 'ON')),
+        h('div', { class: 'row' }, sel('filter2.type', FILTER_TYPES), sel('filter2.route', [['serial', 'En série (après le 1)'], ['parallel', 'En parallèle']])),
+        h('div', { class: 'knobs' }, kn('filter2.cutoff', 'filter.cutoff'), kn('filter2.res', 'filter.res'), kn('filter2.envAmt', 'filter.envAmt'), kn('filter2.keytrack', 'filter.keytrack'))),
+      env('ampEnv', 'ENVELOPPE AMPLI'), env('filtEnv', 'ENVELOPPE FILTRE (env. 2)'), env('modEnv', 'ENVELOPPE 3 (modulation)'),
       lfo('lfo1', 'LFO 1'), lfo('lfo2', 'LFO 2'),
       h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'LFO WAVETABLE (morphing)'), h('div', { class: 'knobs' }, kn('wtLfo.rate', 'rate'), kn('wtLfo.depth', 'depth'))),
       h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'VOIX', tog('mono', 'MONO / LEGATO')), h('div', { class: 'knobs' }, kn('glide'), kn('volume'), kn('pan'), kn('velSens'))),
+      matrix(),
       part === 'lead' ? drawPanel() : null),
     keyboard(part),
     h('div', { id: 'roll-' + part, class: 'rollhost' }));

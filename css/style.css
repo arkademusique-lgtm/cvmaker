@@ -301,3 +301,7 @@ a { color: var(--blue); text-underline-offset: 3px; }
 .libcount { flex: none; align-self: center; font-size: 12px; font-weight: 800; color: var(--org); padding: 0 4px; font-variant-numeric: tabular-nums; }
 .libnav { flex: none; } .libnum { width: 70px; text-align: center; font-variant-numeric: tabular-nums; }
 .genrebox summary { color: var(--org); }
+.warprow { margin-top: 6px; align-items: flex-end; gap: 10px; }
+.modrows { display: flex; flex-direction: column; gap: 6px; }
+.modrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--panel2); border-radius: 8px; padding: 6px 8px; }
+.modrow .sel { min-width: 150px; }
