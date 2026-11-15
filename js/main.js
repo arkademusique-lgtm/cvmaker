@@ -10,6 +10,7 @@ import { Midi } from './midi.js';
 import { BleLink, HidLink, GamepadLink, RawDecoder, hidCode } from './ble.js';
 import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
 import { PRESETS, PRESET_CATS, presetCat, FX_CHAINS } from './presets.js';
+import { importVital } from './vital.js';
 import { GENRES, GENRE_IDS, ROLES, PER_BUCKET, LIBRARY_SIZE, genrePreset, genreGroove } from './genres.js';
 import * as db from './storage.js';
 import { h, knob, button, select, toggle, toast, controls, registerControl, setLearnHandler, pickFile } from './ui.js';
@@ -819,6 +820,20 @@ const SPEC = {
   glide: K('Glide', 0, 1), volume: K('Volume', 0, 1.2), pan: K('Pan', -1, 1), velSens: K('Vélocité', 0, 1),
 };
 const userPresets = () => db.ls.get('userPresets', []);
+async function importVitalFiles(part) {
+  const files = await pickFile('.vital,application/json', true); if (!files.length) return;
+  const list = userPresets(), stored = db.ls.get('userTables', {}); let first = null, ok = 0;
+  for (const f of files) {
+    try {
+      const { patch, tables } = importVital(await f.text(), f.name);
+      for (const id of tables) stored[id] = exportUserTables()[id];
+      list.unshift(patch); first ||= patch; ok++;
+    } catch (e) { toast(`« ${f.name} » n'est pas un preset Vital lisible`); }
+  }
+  db.ls.set('userPresets', list.slice(0, 300));
+  try { db.ls.set('userTables', stored); } catch (e) { toast('Mémoire du navigateur pleine : wavetables non sauvegardées'); }
+  if (first) { const sy = synthOf(part); Object.assign(libOf(part), { g: 'classic' }); savePlay(); sy.setPatch(first); S[part] = sy.patch; renderSynth('lead'); renderSynth('bass'); if (S.tab === 'play') renderPlay(); toast(`${ok} preset(s) Vital importé(s) — rangés dans « Classiques » ★`); }
+}
 const synthOf = (part) => (part === 'lead' ? engine.leadSynth : engine.bassSynth);
 let waveCanvases = [];
 
@@ -851,6 +866,7 @@ function renderSynth(part) {
     }),
     button('◀', () => stepPreset(part, -1), { learn: `${part}.presetPrev` }), button('▶', () => stepPreset(part, 1), { learn: `${part}.presetNext` }),
     button('🎲 Aléatoire', () => { synth.setPatch(randomPatch(part)); S[part] = synth.patch; renderSynth(part); }, { cls: 'accent' }),
+    button('⇧ Importer .vital', () => importVitalFiles(part), { title: 'Importer des presets Vital (téléchargés sur presetshare.com, vital.audio…)' }),
     button('💾 Sauver preset', () => { const name = prompt('Nom du preset ?', P.name); if (!name) return; const list = userPresets(); list.push({ ...deepClone(P), name }); db.ls.set('userPresets', list); renderSynth('lead'); renderSynth('bass'); toast('Preset sauvegardé'); }),
     button('Init', () => { synth.setPatch(DEFAULT_PATCH); S[part] = synth.patch; renderSynth(part); }));
   const osc = (w, title) => {
@@ -1365,6 +1381,7 @@ async function boot() {
   engine.rack.add('space', { mix: 0.18 });
   engine.rack.add('compressor', { params: { threshold: -14, ratio: 3, makeup: 1.2 } });
   S.fx1 = flt.id; S.fx2 = crush.id;
+  importUserTables(db.ls.get('userTables', {}));
   const userKits = await db.all('kits'); S.kits.push(...userKits);
   applyKitMix();
   // demo groove in pattern 1
