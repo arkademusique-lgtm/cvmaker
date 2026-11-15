@@ -1,13 +1,14 @@
 import { Engine, TRACKS, DRUM_TRACKS } from './audio/engine.js';
 import { VOICES } from './audio/drums.js';
 import { DEFAULT_PATCH, mergePatch, LFO_DESTS } from './audio/synth.js';
-import { FX_TYPES } from './audio/fx.js';
+import { FX_TYPES, FX_CATS } from './audio/fx.js';
+import { PERF } from './audio/perf.js';
 import { TABLES, tableOptions, framesAt, N as WT_N, setCustomFrames, importWavetable, exportUserTables, importUserTables } from './audio/wavetables.js';
 import { Sequencer, emptyPattern } from './sequencer.js';
 import { Midi } from './midi.js';
 import { BleLink, HidLink, GamepadLink, RawDecoder } from './ble.js';
 import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
-import { PRESETS } from './presets.js';
+import { PRESETS, PRESET_CATS, presetCat, FX_CHAINS } from './presets.js';
 import * as db from './storage.js';
 import { h, knob, button, select, toggle, toast, controls, registerControl, setLearnHandler, pickFile } from './ui.js';
 import { clamp, deepClone, noteName, uid, encodeWav, download, abToB64, b64ToAb, pick, rand } from './util.js';
@@ -127,13 +128,13 @@ function recStep() {
 
 // ---------------------------------------------------------------- transport & global setters
 function setBpm(v, from) {
-  S.bpm = clamp(Math.round(v), 30, 300); seq.bpm = S.bpm; engine.rack.setTempo(S.bpm);
+  S.bpm = clamp(Math.round(v), 30, 300); seq.bpm = S.bpm; engine.rack.setTempo(S.bpm); engine.perf.setTempo(S.bpm);
   for (const id of ['hdr.tempo', 'dev.tempo']) if (id !== from) controls.get(id)?.el.setValue(S.bpm, true);
 }
 function togglePlay() {
   engine.init();
   if (seq.playing) { seq.stop(); engine.leadSynth.allOff(); engine.bassSynth.allOff(); }
-  else { if (S.songMode) { S.songPos = 0; S.cur = S.song[0] ?? 0; refreshPattern(); } seq.start(); }
+  else { if (S.songMode) { S.songPos = 0; S.cur = S.song[0] ?? 0; refreshPattern(); } seq.start(); engine.rack.sync(seq.next); }
   document.querySelectorAll('.play-btn').forEach((b) => b.classList.toggle('on', seq.playing));
 }
 function setRec(v) { S.rec = v ?? !S.rec; document.querySelectorAll('.rec-btn').forEach((b) => b.classList.toggle('on', S.rec)); }
@@ -384,6 +385,7 @@ function startNotes(d, vel) {
 }
 function stopNotes(notes) { if (PL.arp !== 'off') notes.forEach((n) => { const i = arpSet.indexOf(n); if (i >= 0) arpSet.splice(i, 1); }); else notes.forEach((n) => synthOf(PL.part).keyUp(n)); }
 function playPanic() {
+  engine.perf?.stopAll(); document.querySelectorAll('.perfpad.down').forEach((e) => e.classList.remove('down'));
   playActive.clear(); playLatched.clear(); arpSet = []; clearTimeout(arpTimer); arpTimer = null;
   engine.leadSynth?.allOff(); engine.bassSynth?.allOff(); document.querySelectorAll('.npad.down').forEach((e) => e.classList.remove('down'));
 }
@@ -443,7 +445,8 @@ function renderPlay() {
       button('FX1', () => fxToggle('fx1')), button('FX2', () => fxToggle('fx2'))));
   v.append(top);
   if (isSynth) {
-    const synth = synthOf(PL.part), all = [...PRESETS, ...userPresets()];
+    const synth = synthOf(PL.part), cat = PL.cat || 'all', all = [...PRESETS, ...userPresets()].filter((p) => cat === 'all' || presetCat(p.name) === cat);
+    v.append(h('div', { class: 'chips cats' }, PRESET_CATS.map(([k, l]) => h('button', { class: `chip small ${k === cat ? 'on' : ''}`, onclick: () => set('cat', k) }, l))));
     v.append(h('div', { class: 'chips' }, button('🎲', () => { randomSound(); renderPlay(); }, { cls: 'accent' }),
       all.map((p) => h('button', { class: `chip ${p.name === synth.patch.name ? 'on' : ''}`, onclick: () => { synth.setPatch(p); S[PL.part] = synth.patch; renderSynth(PL.part); renderPlay(); } }, p.name))));
     const optsBox = h('details', { class: 'playopts', open: db.ls.get('playOpts', innerWidth > 700) }, h('summary', {}, `⚙️ ${['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][PL.root]} ${SCALES[PL.scale][0]} · C${PL.octs[PL.part]}${PL.chord ? ' · accords' : ''}${PL.arp !== 'off' ? ' · arpège' : ''}${PL.latch ? ' · maintien' : ''} — réglages`));
@@ -459,11 +462,13 @@ function renderPlay() {
       toggle('+ Batterie', PL.drums, (x) => set('drums', x)),
       seg([['pads', 'Pads'], ['piano', 'Piano']], PL.layout, (x) => set('layout', x)),
       button('■ Stop notes', playPanic, { cls: 'warn' })));
+    v.append(perfStrip());
     if (PL.drums) v.append(drumPads(true));
     v.append(h('div', { class: 'playsurf' }, PL.layout === 'piano' ? keyboard(PL.part) : notePads(), xyPad()));
   } else {
     v.append(h('div', { class: 'playbar opts' }, button('◀ Kit', () => changeKit(-1)), h('span', { class: 'patchname' }, S.kit.name), button('Kit ▶', () => changeKit(1)), button('🎲 Kit', () => changeKit(S.kits.length - S.kitIdx), { cls: 'accent' }),
       h('span', { class: 'hint' }, 'Haut du pad = fort, bas = doux. ● REC + lecture = enregistre dans le pattern.')));
+    v.append(perfStrip());
     v.append(drumPads(false));
   }
 }
@@ -877,31 +882,71 @@ function onKey(e, down) {
 }
 
 // ---------------------------------------------------------------- FX rack view
+function applyChain(c) {
+  engine.rack.load(c.chain.map(([type, params, mix]) => ({ type, params: params || {}, mix })));
+  engine.rack.setTempo(S.bpm); engine.rack.sync(seq?.playing ? seq.next : engine.now);
+  const find = (...types) => engine.rack.list.find((f) => types.includes(f.type))?.id || null;
+  S.fx1 = find('djfilter', 'filter', 'autowah'); S.fx2 = find('crusher', 'decimator', 'gate', 'fuzz', 'pitch', 'tapeecho');
+  S.chain = c.name; renderFx(); refreshDevice(); toast(`Chaîne « ${c.name} »`);
+}
+function randomizeFx(fx) {
+  for (const [k, p] of Object.entries(fx.def.params)) {
+    const v = p.options ? pick(p.options) : p.curve === 'exp' ? p.min * Math.pow(p.max / p.min, Math.random()) : p.min + Math.random() * (p.max - p.min);
+    fx.set(k, p.step ? Math.round(v / p.step) * p.step : v);
+  }
+}
+/** Hold-to-apply performance pads (DJ effects). Learnable: map any RM-808 button to them. */
+function perfPads(cls = '') {
+  const grid = h('div', { class: `perfpads ${cls}` });
+  PERF.forEach(([id, label]) => {
+    const el = h('div', { class: 'perfpad', 'data-perf': id }, label);
+    const on = () => { el.classList.add('down'); engine.perf.start(id); };
+    const off = () => { if (!el.classList.contains('down')) return; el.classList.remove('down'); engine.perf.stop(id); };
+    el.addEventListener('pointerdown', (e) => { if (document.body.classList.contains('learning')) return; e.preventDefault(); el.setPointerCapture?.(e.pointerId); if (S.perfLatch && el.classList.contains('down')) off(); else on(); });
+    el.addEventListener('pointerup', () => { if (!S.perfLatch) off(); }); el.addEventListener('pointercancel', () => { if (!S.perfLatch) off(); });
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    registerControl(`perf.${id}`, el, { trigger: on, release: off, kind: 'button' });
+    grid.append(el);
+  });
+  return grid;
+}
+function perfStrip() {
+  const box = h('details', { class: 'perfbox', open: db.ls.get('perfOpen', true) }, h('summary', {}, '⚡ Effets live — maintiens un pad'), perfPads('compact'));
+  box.addEventListener('toggle', () => db.ls.set('perfOpen', box.open));
+  return box;
+}
 function renderFx() {
   const v = views.fx; if (!v) return; v.innerHTML = '';
-  let addType = 'reverb';
-  v.append(h('div', { class: 'bar' }, h('b', {}, 'RACK D\'EFFETS (master) — chaîne illimitée'),
-    select(Object.entries(FX_TYPES).map(([k, d]) => [k, d.name]), addType, (x) => (addType = x)),
-    button('+ Ajouter', () => { engine.rack.add(addType); renderFx(); }, { cls: 'accent' }),
-    h('span', { class: 'hint' }, 'FX1 / FX2 du RM-808 activent/désactivent l\'effet que tu leur assignes.')));
+  const collapsed = db.ls.get('fxCollapsed', {});
+  v.append(h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, '⚡ EFFETS LIVE (maintenir = appliquer)', toggle('Verrouiller', !!S.perfLatch, (x) => { S.perfLatch = x; if (!x) { engine.perf.stopAll(); document.querySelectorAll('.perfpad.down').forEach((e) => e.classList.remove('down')); } })), perfPads()));
+  v.append(h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, '🎚️ CHAÎNES PRÊTES — un geste remplace tout le rack'),
+    h('div', { class: 'chips wrap' }, FX_CHAINS.map((c) => h('button', { class: `chip ${S.chain === c.name ? 'on' : ''}`, onclick: () => applyChain(c) }, c.name)))));
+  v.append(h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, `➕ AJOUTER UN PLUGIN (${Object.keys(FX_TYPES).length} disponibles) — un geste`,
+      h('div', { class: 'row' }, button('Tout ON/OFF', () => { const on = !engine.rack.list.every((f) => f.enabled); engine.rack.list.forEach((f) => f.setEnabled(on)); renderFx(); refreshDevice(); }),
+        button('Replier tout', () => { const c = {}; engine.rack.list.forEach((f) => (c[f.id] = true)); db.ls.set('fxCollapsed', c); renderFx(); }),
+        button('Vider', () => { engine.rack.clear(); S.chain = null; renderFx(); }, { cls: 'warn' }))),
+    h('div', { class: 'fxcats' }, FX_CATS.map(([cat, label]) => h('div', { class: 'fxcat' }, h('small', {}, label),
+      h('div', { class: 'chips wrap' }, Object.entries(FX_TYPES).filter(([, d]) => d.cat === cat).map(([k, d]) => h('button', { class: 'chip small', onclick: () => { const fx = engine.rack.add(k); fx.sync(seq?.playing ? seq.next : engine.now); S.chain = null; renderFx(); toast(`+ ${d.name}`); } }, d.name))))))));
   const list = h('div', { class: 'fxlist' });
   engine.rack.list.forEach((fx, idx) => {
-    const card = h('div', { class: `panel fx ${fx.enabled ? '' : 'off'}` },
-      h('div', { class: 'ptitle' }, `${idx + 1}. ${fx.def.name}`,
+    const isCol = collapsed[fx.id];
+    const card = h('div', { class: `panel fx ${fx.enabled ? '' : 'off'} ${isCol ? 'col' : ''}` },
+      h('div', { class: 'ptitle' }, h('span', { class: 'fxname', onclick: () => { collapsed[fx.id] = !isCol; db.ls.set('fxCollapsed', collapsed); renderFx(); } }, `${isCol ? '▸' : '▾'} ${idx + 1}. ${fx.def.name}`),
         h('div', { class: 'row' },
           toggle('ON', fx.enabled, (x) => { fx.setEnabled(x); card.classList.toggle('off', !x); refreshDevice(); }, { learn: `fx.${fx.id}.on` }),
           h('button', { class: `btn mini ${S.fx1 === fx.id ? 'on' : ''}`, onclick: () => { S.fx1 = S.fx1 === fx.id ? null : fx.id; renderFx(); refreshDevice(); } }, 'FX1'),
           h('button', { class: `btn mini ${S.fx2 === fx.id ? 'on' : ''}`, onclick: () => { S.fx2 = S.fx2 === fx.id ? null : fx.id; renderFx(); refreshDevice(); } }, 'FX2'),
+          button('🎲', () => { randomizeFx(fx); renderFx(); }, { title: 'Réglages aléatoires' }),
           button('↑', () => { engine.rack.move(fx, -1); renderFx(); }), button('↓', () => { engine.rack.move(fx, 1); renderFx(); }),
           button('✕', () => { engine.rack.remove(fx); renderFx(); }))),
-      h('div', { class: 'knobs' },
+      isCol ? null : h('div', { class: 'knobs' },
         knob({ label: 'Mix', value: fx.mix, def: fx.def.mix, onInput: (x) => fx.setMix(x), learn: `fx.${fx.id}.mix`, size: 'sm' }),
         Object.entries(fx.def.params).map(([k, p]) => p.options
           ? h('label', { class: 'fxsel' }, p.label, select(p.options, fx.params[k], (x) => fx.set(k, x)))
           : knob({ label: p.label, min: p.min, max: p.max, value: fx.params[k], def: p.def, step: p.step, curve: p.curve, onInput: (x) => fx.set(k, x), learn: `fx.${fx.id}.${k}`, size: 'sm' }))));
     list.append(card);
   });
-  v.append(list);
+  v.append(h('div', { class: 'ptitle rackt' }, `RACK (${engine.rack.list.length} effets, dans l'ordre du signal) — FX1 / FX2 du RM-808 activent l'effet assigné`), list);
 }
 
 // ---------------------------------------------------------------- kits view
@@ -1186,6 +1231,7 @@ function renderHelp() {
   <ul><li><b>Kits</b> : 18 voix synthétisées (808/909, FM, zap, percs…), réglables, ou tes propres samples (glisser-déposer). Kits illimités, sauvegardables, exportables.</li>
   <li><b>Synthé</b> : 2 oscillateurs wavetable (15 tables + dessin libre + import de wavetables WAV façon Serum/Vital), unisson 9 voix, FM, sub, bruit, filtre multimode avec drive, 2 enveloppes, 2 LFO, LFO de wavetable, mono/glide, 25 presets d'instruments (cordes, piano FM, cloches, orgue, flûte, basses, leads, pads…) + aléatoire + presets perso.</li>
   <li><b>Effets</b> : rack illimité — distorsion, bitcrusher, filtre à LFO, EQ, chorus, flanger, phaser, delay ping-pong synchro, réverbe, compresseur, trémolo/auto-pan, trance gate, ring mod, tape wobble, élargisseur stéréo.</li></ul>
+  <h3>Plugins & rapidité</h3><ul><li><b>31 plugins d'effets</b> en 7 familles, ajoutés en un geste ; <b>12 chaînes prêtes</b> (Club, Lo-fi, Dub, Techno, Ambient, Vaporwave…) qui remplacent tout le rack d'un coup ; 🎲 sur chaque effet pour des réglages aléatoires ; cartes repliables.</li><li><b>⚡ Effets live</b> (onglets Jouer et Effets) : maintiens un pad pour appliquer — répétition 1/4 à 1/32, filtres qui montent/descendent, tape stop, reverse, réverbe / écho « throw », hachoir, crush. Chaque pad s'assigne à un bouton du RM-808 avec le mode Learn.</li><li><b>45 instruments</b> classés (Basses, Leads, Pads, Claviers, Plucks, FX) en un geste dans l'onglet Jouer.</li></ul>
   <h3>Raccourcis</h3>${CHEATS}<p>Échap = sortir du mode Learn</p></div>`;
 }
 
@@ -1197,13 +1243,15 @@ async function boot() {
   seq = new Sequencer(engine, onStep, onUiStep); seq.onBar = onBar; seq.getLength = () => pat().length;
   engine.leadSynth.setPatch(S.lead); engine.bassSynth.setPatch(S.bass); S.lead = engine.leadSynth.patch; S.bass = engine.bassSynth.patch;
   engine.rack.setTempo(S.bpm);
-  const eq = engine.rack.add('eq3');
+  engine.perf.setTempo(S.bpm);
+  engine.rack.add('djfilter');
   const flt = engine.rack.add('filter', { enabled: false, params: { type: 'lowpass', freq: 600, q: 8, lfoRate: 0.25, lfoDepth: 0.6 } });
-  const crush = engine.rack.add('crusher', { enabled: false });
+  const crush = engine.rack.add('decimator', { enabled: false, params: { rate: 6, bits: 8 } });
+  engine.rack.add('eq3');
   engine.rack.add('delay', { mix: 0.18 });
-  engine.rack.add('reverb', { mix: 0.18 });
+  engine.rack.add('space', { mix: 0.18 });
   engine.rack.add('compressor', { params: { threshold: -14, ratio: 3, makeup: 1.2 } });
-  void eq; S.fx1 = flt.id; S.fx2 = crush.id;
+  S.fx1 = flt.id; S.fx2 = crush.id;
   const userKits = await db.all('kits'); S.kits.push(...userKits);
   applyKitMix();
   // demo groove in pattern 1
