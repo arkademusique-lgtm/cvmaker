@@ -12,6 +12,7 @@ import { BUILTIN_KITS, randomKit, cloneKit, makeTrack } from './kits.js';
 import { PRESETS, PRESET_CATS, presetCat, FX_CHAINS } from './presets.js';
 import { importVital } from './vital.js';
 import { renderPack, packToZip } from './packs.js';
+import { genreSections, SECTIONS, SONG_ORDER } from './patterns.js';
 import { envEditor, lfoEditor, SHAPE_NAMES, modSourceBar, decorateMods } from './visual.js';
 import { SHAPES } from './audio/synth.js';
 import { GENRES, GENRE_IDS, ROLES, PER_BUCKET, LIBRARY_SIZE, genrePreset, genreGroove } from './genres.js';
@@ -564,9 +565,47 @@ async function startGenre(g, { soundsToo = true } = {}) {
   S.genre = g; refreshPattern(); if (S.tab === 'play') renderPlay();
   toast(`${G.name} — ${G.bpm} BPM${soundsToo ? ' · kit, groove, basse, lead et effets chargés' : ''}`);
 }
+// ---------------------------------------------------------------- ready-made patterns
+function applySection(p, sec) {
+  p.drums = sec.drums.map((r) => [...r]);
+  p.bass.forEach((b) => Object.assign(b, { on: false, acc: false, slide: false }));
+  for (const n of sec.bass) {
+    const note = degNote(n.deg, 'bass') + 12 * (n.up || 0);
+    for (let k = 0; k < (n.len || 1) && n.step + k < 16; k++) Object.assign(p.bass[n.step + k], { on: true, note, noteSet: true, acc: !!n.acc && k === 0, slide: k < (n.len || 1) - 1 });
+  }
+  p.synth = p.synth.map(() => []);
+  for (const n of [...(sec.lead || []), ...(sec.padChords || [])]) p.synth[n.step] = [...new Set([...p.synth[n.step], ...n.degs.map((d) => degNote(d, 'lead') + 12 * (n.up || 0))])];
+  p.synthGate = sec.chordGate || 2; p.length = 16;
+}
+function setGenreTempo(g) { const G = GENRES[g]; setBpm(G.bpm); S.swing = G.swing; seq.swing = G.swing; controls.get('hdr.swing')?.el.setValue(G.swing, true); PL.scale = G.scale; savePlay(); }
+function loadSection(g, i) {
+  pushUndo(); setGenreTempo(g); S.genre = g;
+  const sec = genreSections(g)[i]; applySection(pat(), sec); pat().name = sec.name;
+  refreshPattern(); if (S.tab === 'play') renderPlay();
+  toast(`${GENRES[g].name} · ${sec.name} → pattern ${S.cur + 1} (${GENRES[g].bpm} BPM)`);
+}
+/** One tap: tempo, kit, sounds, FX, the 8 sections in patterns 1-8 and the song order, then play. */
+async function loadSong(g, autoplay = true) {
+  const wasPlaying = seq.playing; if (wasPlaying) togglePlay();
+  await startGenre(g, { soundsToo: true });
+  const secs = genreSections(g);
+  secs.forEach((sec, i) => { S.patterns[i] = emptyPattern(sec.name); applySection(S.patterns[i], sec); });
+  S.song = [...SONG_ORDER]; S.songMode = true; S.songPos = 0; S.cur = 0; S.queued = null;
+  refreshPattern(); renderSong(); if (S.tab === 'play') renderPlay();
+  if (autoplay || wasPlaying) togglePlay();
+  toast(`${GENRES[g].name} : morceau complet chargé (8 patterns, mode SONG) — ${GENRES[g].bpm} BPM`);
+}
+function patternPanel(compact) {
+  const g0 = GENRES[S.genre] ? S.genre : 'dnb';
+  const sel = select(GENRE_IDS.map((g) => [g, `${GENRES[g].name} · ${GENRES[g].bpm}`]), g0, (x) => { S.genre = x; });
+  return h('div', { class: `panel patpanel ${compact ? 'compact' : ''}` }, h('div', { class: 'ptitle' }, 'PATTERNS PRÊTS — tous les styles, au bon tempo'),
+    h('div', { class: 'row' }, sel, button('▶ Morceau complet', () => loadSong(sel.value), { cls: 'accent', title: 'Tempo, kit, sons, effets, 8 patterns et enchaînement' })),
+    h('div', { class: 'chips wrap' }, SECTIONS.map((name, i) => h('button', { class: 'chip small', onclick: () => loadSection(sel.value, i), title: `Charge « ${name} » dans le pattern ${S.cur + 1}` }, name))),
+    h('p', { class: 'hint' }, '« Morceau complet » remplit les patterns 1 à 8 (Intro, Couplets, Montée, Drop, Drop 2, Break, Fill) et les enchaîne en mode SONG. Une section seule se charge dans le pattern en cours. Le tempo du style est réglé automatiquement.'));
+}
 function genreStarter() {
-  const box = h('details', { class: 'perfbox genrebox', open: db.ls.get('genreOpen', true) }, h('summary', {}, '🎚️ Démarrer un morceau — un genre en un geste'),
-    h('div', { class: 'chips wrap' }, GENRE_IDS.map((g) => h('button', { class: `chip ${S.genre === g ? 'on' : ''}`, onclick: () => startGenre(g) }, `${GENRES[g].name} · ${GENRES[g].bpm}`))));
+  const box = h('details', { class: 'perfbox genrebox', open: db.ls.get('genreOpen', true) }, h('summary', {}, '🎚️ Démarrer un morceau — un genre en un geste (8 patterns + chanson)'),
+    h('div', { class: 'chips wrap' }, GENRE_IDS.map((g) => h('button', { class: `chip ${S.genre === g ? 'on' : ''}`, onclick: () => loadSong(g) }, `${GENRES[g].name} · ${GENRES[g].bpm}`))));
   box.addEventListener('toggle', () => db.ls.set('genreOpen', box.open));
   return box;
 }
@@ -720,7 +759,8 @@ function renderSeq() {
   const v = views.seq; if (!v) return; v.innerHTML = '';
   const p = pat();
   const top = h('div', { class: 'bar' },
-    h('div', { class: 'patsel' }, Array.from({ length: 16 }, (_, i) => h('button', { class: `btn mini ${i === S.cur ? 'on' : ''} ${i === S.queued ? 'queued' : ''}`, onclick: () => selectPattern(i) }, i + 1))),
+    h('div', { class: 'patsel' }, Array.from({ length: 16 }, (_, i) => h('button', { class: `btn mini ${i === S.cur ? 'on' : ''} ${i === S.queued ? 'queued' : ''}`, title: S.patterns[i].name, onclick: () => selectPattern(i) }, i + 1))),
+    /^P\d+$/.test(p.name || '') ? null : h('span', { class: 'patchname' }, p.name),
     h('label', {}, 'Longueur ', select(Array.from({ length: 16 }, (_, i) => [String(i + 1), String(i + 1)]), String(p.length), (x) => { p.length = +x; refreshSteps(); })),
     button('Copier', () => { S.clip = deepClone(p); toast('Pattern copié'); }),
     button('Coller', () => { if (S.clip) { S.patterns[S.cur] = deepClone(S.clip); refreshPattern(); } }),
@@ -760,7 +800,7 @@ function renderSeq() {
     }
     grid.append(row);
   });
-  v.append(top, grid, h('p', { class: 'hint' }, 'Clic = pas · Maj+clic / clic droit = accent · Glisse un fichier audio sur une piste pour y charger ton sample (WAV, MP3, OGG…).'));
+  v.append(patternPanel(), top, grid, h('p', { class: 'hint' }, 'Clic = pas · Maj+clic / clic droit = accent · Glisse un fichier audio sur une piste pour y charger ton sample (WAV, MP3, OGG…).'));
   refreshSteps();
 }
 
@@ -1185,7 +1225,7 @@ function renderSong() {
     button(`+ Ajouter pattern ${S.cur + 1}`, () => { S.song.push(S.cur); renderSong(); }),
     button('Vider', () => { S.song = []; renderSong(); })),
     h('div', { class: 'songlist' }, S.song.map((pIdx, i) => h('div', { class: `songitem ${S.songMode && i === S.songPos ? 'on' : ''}` },
-      h('span', {}, `${i + 1}.`), select(Array.from({ length: 16 }, (_, k) => [String(k), 'Pattern ' + (k + 1)]), String(pIdx), (x) => (S.song[i] = +x)),
+      h('span', {}, `${i + 1}.`), select(Array.from({ length: 16 }, (_, k) => [String(k), `Pattern ${k + 1}${/^P\d+$/.test(S.patterns[k].name || '') ? '' : ' · ' + S.patterns[k].name}`]), String(pIdx), (x) => (S.song[i] = +x)),
       button('↑', () => { if (i) { [S.song[i - 1], S.song[i]] = [S.song[i], S.song[i - 1]]; renderSong(); } }),
       button('✕', () => { S.song.splice(i, 1); renderSong(); })))),
     h('p', { class: 'hint' }, 'En mode SONG, les patterns s\'enchaînent dans cet ordre (bouton PATTERN/SONG du RM-808).'));
