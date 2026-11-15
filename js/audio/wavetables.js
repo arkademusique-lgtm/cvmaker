@@ -115,3 +115,11 @@ export function importUserTables(obj) {
   for (const [k, v] of Object.entries(obj || {})) TABLES[k] = { name: v.name, imported: v.imported, frames: v.frames.map((f) => Float32Array.from(f)) };
   invalidateTables();
 }
+
+/** Register a wavetable from raw single-cycle frames of any length (resampled to N). */
+export function registerFrames(id, name, rawFrames) {
+  const frames = rawFrames.slice(0, 64).map((f) => normalize(Float32Array.from({ length: N }, (_, i) => { const x = (i / N) * f.length, j = Math.floor(x), t = x - j; return f[j % f.length] * (1 - t) + f[(j + 1) % f.length] * t; })));
+  TABLES[id] = { name, frames, imported: true };
+  invalidateTables();
+  return id;
+}
