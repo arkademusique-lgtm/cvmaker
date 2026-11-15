@@ -1,4 +1,4 @@
-import { Engine, TRACKS, DRUM_TRACKS } from './audio/engine.js';
+import { Engine, TRACKS, DRUM_TRACKS, wakeAudio } from './audio/engine.js';
 import { VOICES } from './audio/drums.js';
 import { DEFAULT_PATCH, mergePatch, LFO_DESTS } from './audio/synth.js';
 import { FX_TYPES, FX_CATS } from './audio/fx.js';
@@ -335,6 +335,7 @@ function buildShell() {
     knob({ label: 'Master', min: 0, max: 1.2, value: S.master, def: 0.8, onInput: (v) => { S.master = v; engine.master.gain.setTargetAtTime(v, engine.now, 0.02); }, learn: 'hdr.master', size: 'sm' }),
     h('div', { class: 'info', id: 'hdrInfo' }),
     h('canvas', { id: 'scope', width: 300, height: 60 }),
+    h('button', { class: 'midi-pill bad', id: 'audioPill', hidden: true, onclick: () => wakeAudio(engine.ctx) }, 'Son en pause — touche ici'),
     h('div', { class: 'midi-pill', id: 'midiPill' }, 'MIDI…'),
     button('⛶', () => { const d = document; (d.fullscreenElement ? d.exitFullscreen?.() : d.documentElement.requestFullscreen?.())?.catch?.(() => {}); }, { cls: 'fs-btn', title: 'Plein écran' }),
   );
@@ -1253,6 +1254,7 @@ function toggleRecord() {
 function renderHelp() {
   views.help.innerHTML = iconizeHtml(`<div class="panel help">
   <h2>RM-808 Studio — guide rapide</h2>
+  <h3>Pas de son ?</h3><ul><li>Monte le volume de l'iPhone/iPad avec les boutons latéraux et vérifie que le Bluetooth n'envoie pas le son vers un casque ou une enceinte.</li><li>Touche une fois l'écran après avoir ouvert l'app : iOS n'autorise le son qu'après un toucher. Si la pastille rouge « Son en pause » apparaît en haut, touche-la.</li><li>L'app force la lecture même avec le bouton silencieux activé ; si ça ne suffit pas sur une ancienne version d'iOS, désactive le mode silencieux.</li></ul>
   <h3>1. Connecter ton RM-808</h3>
   <ul><li>Allume le RM-808 et associe-le en <b>Bluetooth MIDI</b> (ou USB) à ton appareil.
   <br>· <b>Mac</b> : Configuration audio et MIDI → Fenêtre → Studio MIDI → icône Bluetooth → Connecter.
@@ -1310,6 +1312,11 @@ async function boot() {
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !kbdCtrl()) setLearn(false); onKey(e, true); });
   window.addEventListener('keyup', (e) => onKey(e, false));
   decoder.onKbd = pads.onChange = hid.onChange = ble.onChange = () => { midiStatus(); if (S.tab === 'midi') renderMidi(); }; pads.start();
+  // iOS suspends / interrupts audio (calls, lock screen, other apps): resume on the next touch or key.
+  for (const ev of ['pointerdown', 'touchend', 'keydown']) addEventListener(ev, () => wakeAudio(engine.ctx), { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio(engine.ctx); });
+  const audioPill = () => { const p = document.getElementById('audioPill'); if (p) p.hidden = engine.ctx.state === 'running'; };
+  engine.ctx.addEventListener('statechange', audioPill); setInterval(audioPill, 1000);
   midi.listeners.add(routeMidi); midi.statusListeners.add(() => { midiStatus(); if (S.tab === 'midi') renderMidi(); });
   for (const k of Object.keys(midi.map)) if (k.startsWith('raw::') || (rmProfile() && k.startsWith('key:') && KNOB_KEYS[k.slice(4)])) delete midi.map[k];
   midi.save();

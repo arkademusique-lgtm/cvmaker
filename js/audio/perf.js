@@ -17,7 +17,11 @@ export class PerfFx {
     this.ws = c.createWaveShaper();
     this.gate = c.createGain();
     try { if (!worklets.ok) throw 0; this.looper = new AudioWorkletNode(c, 'rm-looper', { outputChannelCount: [2] }); } catch (e) { this.looper = c.createGain(); this.noLooper = true; }
-    input.connect(this.lp).connect(this.hp).connect(this.ws).connect(this.looper).connect(this.gate).connect(output);
+    // The looper sits on a parallel path, faded in only while a repeat/stop/reverse is held:
+    // if the AudioWorklet misbehaves on a browser, the main signal is never silenced.
+    this.dry = c.createGain(); this.wetL = c.createGain(); this.wetL.gain.value = 0;
+    input.connect(this.lp).connect(this.hp).connect(this.ws);
+    this.ws.connect(this.dry).connect(this.gate); this.ws.connect(this.looper).connect(this.wetL).connect(this.gate); this.gate.connect(output);
     // throws (sends whose tail keeps ringing after release)
     this.sendV = c.createGain(); this.sendV.gain.value = 0; this.sendE = c.createGain(); this.sendE.gain.value = 0;
     this.cv = c.createConvolver(); const len = c.sampleRate * 3, b = c.createBuffer(2, len, c.sampleRate);
@@ -31,11 +35,12 @@ export class PerfFx {
   setTempo(bpm) { this.bpm = bpm; this.dl.delayTime.setTargetAtTime(this.beat * 0.75, this.ctx.currentTime, 0.05); }
   start(id) {
     const t = this.ctx.currentTime, b = this.beat; this.active.add(id);
-    const loop = (div) => this.looper.port?.postMessage({ cmd: 'repeat', len: b * div * this.ctx.sampleRate });
+    const xf = (on) => { if (this.noLooper) return; this.dry.gain.setTargetAtTime(on ? 0 : 1, t, 0.004); this.wetL.gain.setTargetAtTime(on ? 1 : 0, t, 0.004); };
+    const loop = (div) => { this.looper.port?.postMessage({ cmd: 'repeat', len: b * div * this.ctx.sampleRate }); xf(true); };
     switch (id) {
       case 'rep4': return loop(1); case 'rep8': return loop(0.5); case 'rep16': return loop(0.25); case 'rep32': return loop(0.125);
-      case 'stop': return this.looper.port?.postMessage({ cmd: 'tapestop', time: b * 1.5 });
-      case 'rev': return this.looper.port?.postMessage({ cmd: 'reverse' });
+      case 'stop': this.looper.port?.postMessage({ cmd: 'tapestop', time: b * 1.5 }); return xf(true);
+      case 'rev': this.looper.port?.postMessage({ cmd: 'reverse' }); return xf(true);
       case 'lp': this.lp.frequency.cancelScheduledValues(t); this.lp.frequency.setValueAtTime(this.lp.frequency.value, t); this.lp.frequency.exponentialRampToValueAtTime(250, t + b * 2); return;
       case 'hp': this.hp.frequency.cancelScheduledValues(t); this.hp.frequency.setValueAtTime(Math.max(20, this.hp.frequency.value), t); this.hp.frequency.exponentialRampToValueAtTime(2500, t + b * 2); return;
       case 'crush': this.ws.curve = crushCurve(4); return;
@@ -49,7 +54,7 @@ export class PerfFx {
   }
   stop(id) {
     const t = this.ctx.currentTime; this.active.delete(id);
-    if (['rep4', 'rep8', 'rep16', 'rep32', 'stop', 'rev'].includes(id)) { if (!['rep4', 'rep8', 'rep16', 'rep32', 'stop', 'rev'].some((x) => this.active.has(x))) this.looper.port?.postMessage({ cmd: 'off' }); return; }
+    if (['rep4', 'rep8', 'rep16', 'rep32', 'stop', 'rev'].includes(id)) { if (!['rep4', 'rep8', 'rep16', 'rep32', 'stop', 'rev'].some((x) => this.active.has(x))) { this.looper.port?.postMessage({ cmd: 'off' }); this.dry.gain.setTargetAtTime(1, t, 0.004); this.wetL.gain.setTargetAtTime(0, t, 0.004); } return; }
     if (id === 'lp') { this.lp.frequency.cancelScheduledValues(t); this.lp.frequency.setTargetAtTime(20000, t, 0.06); }
     if (id === 'hp') { this.hp.frequency.cancelScheduledValues(t); this.hp.frequency.setTargetAtTime(10, t, 0.06); }
     if (id === 'crush') this.ws.curve = null;
