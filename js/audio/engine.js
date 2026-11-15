@@ -7,13 +7,33 @@ import { Synth } from './synth.js';
 export const TRACKS = ['Bass Drum', 'Snare Drum', 'Hi Tom', 'Mid Tom', 'Low Tom', 'Rim Shot', 'Hand Clap', 'Cow Bell', 'Cymbal', 'Open HH', 'Closed HH', 'Bass Line'];
 export const DRUM_TRACKS = 11;
 
+/** iOS: play through the ring/silent switch and keep the context running after interruptions. */
+let silentEl = null;
+function unlockIOS(ctx) {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* Safari 17+ only */ }
+  try {
+    if (!silentEl) {
+      // 0.5 s of silence (8 kHz mono WAV) looped through an <audio> element switches iOS to the "playback" audio category.
+      const n = 4000, b = new DataView(new ArrayBuffer(44 + n * 2)), w = (o, s) => [...s].forEach((ch, i) => b.setUint8(o + i, ch.charCodeAt(0)));
+      w(0, 'RIFF'); b.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+      b.setUint32(24, 8000, true); b.setUint32(28, 16000, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); w(36, 'data'); b.setUint32(40, n * 2, true);
+      silentEl = document.createElement('audio'); silentEl.src = URL.createObjectURL(new Blob([b], { type: 'audio/wav' })); silentEl.loop = true;
+      silentEl.setAttribute('playsinline', ''); silentEl.setAttribute('x-webkit-airplay', 'deny');
+    }
+    silentEl.play().catch(() => {});
+  } catch (e) { /* ignore */ }
+  try { const o = ctx.createBufferSource(); o.buffer = ctx.createBuffer(1, 1, ctx.sampleRate); o.connect(ctx.destination); o.start(0); } catch (e) { /* ignore */ }
+  ctx.resume().catch(() => {});
+}
+export function wakeAudio(ctx) { if (!ctx) return; if (ctx.state !== 'running') unlockIOS(ctx); else if (silentEl?.paused) silentEl.play().catch(() => {}); }
+
 export class Engine {
   constructor() { this.ctx = null; this.samples = new Map(); this.chokes = new Map(); }
   async init() {
     if (this.ctx) return this.ctx.resume();
     const C = window.AudioContext || window.webkitAudioContext;
     const ctx = (this.ctx = new C({ latencyHint: 'interactive' }));
-    const resumed = ctx.resume(); // inside the user gesture (iOS)
+    unlockIOS(ctx); // inside the user gesture (iOS)
     this.fxIn = ctx.createGain();
     this.master = ctx.createGain(); this.master.gain.value = 0.8;
     this.limiter = ctx.createDynamicsCompressor();

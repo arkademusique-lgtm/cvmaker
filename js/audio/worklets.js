@@ -50,7 +50,8 @@ export function loadWorklets(ctx) {
   if (!ctx.audioWorklet) return Promise.resolve(false);
   if (!ready) {
     const url = URL.createObjectURL(new Blob([SRC], { type: 'application/javascript' }));
-    ready = ctx.audioWorklet.addModule(url).then(() => true).catch((e) => { console.warn('AudioWorklet indisponible', e); return false; });
+    const load = ctx.audioWorklet.addModule(url).then(() => true).catch((e) => { console.warn('AudioWorklet indisponible', e); return false; });
+    ready = Promise.race([load, new Promise((r) => setTimeout(() => r(false), 2500))]); // never block audio start
   }
   return ready;
 }
