@@ -19,14 +19,30 @@ const ble = new BleLink(midi, (line) => logLine('🔵 ' + line), decoder);
 const hid = new HidLink((line) => logLine('🟣 ' + line), decoder);
 const pads = new GamepadLink(midi, (line) => logLine(line));
 // Keys coming from the RM-808 (it is a Bluetooth keyboard): same event whether they arrive through the system keyboard or through Bluetooth direct.
-const keysDown = new Map();
+const keyState = {};
 function keyEvent(code, down, input, rawHex) {
-  const t = performance.now(), was = keysDown.get(code);
-  if (down) { if (was && t - was < 300) return; if (was) midi.dispatch({ type: 'noteoff', ch: 0, num: 0, val: 0, key: `key:${code}`, input }); keysDown.set(code, t); }
-  else { if (!was) return; keysDown.delete(code); }
+  // The same press reaches us twice on iOS (system keyboard + Bluetooth direct): keep the first, drop the echo.
+  const t = performance.now(), src = input === 'Clavier' ? 'k' : 'b', st = (keyState[code] ||= { t: 0 });
+  if (down) { if (st.src && st.src !== src && t - st.t < 500) return; st.src = src; st.t = t; if (st.down && !KNOB_KEYS[code]) midi.dispatch({ type: 'noteoff', ch: 0, num: 0, val: 0, key: `key:${code}`, input }); st.down = true; }
+  else { if (!st.down) return; st.down = false; }
+  if (rmProfile() && KNOB_KEYS[code] && !midi.learnTarget) { if (down) { knobStep(code); logKnob(code, input); } return; } // knob notch
   midi.dispatch({ type: down ? 'noteon' : 'noteoff', ch: 0, num: 0, val: down ? 127 : 0, key: `key:${code}`, input, rawHex, keyName: code });
 }
 decoder.onKey = keyEvent;
+// Built-in RM-808 profile: each knob sends a pair of keys (one per direction) every time it moves one notch.
+const RM_KNOBS = [['dev.tempo', 'F1', 'F2'], ['dev.pot.0', 'F3', 'F4'], ['dev.pot.1', 'F5', 'F6'], ['dev.pot.2', 'F7', 'F8'], ['dev.pot.3', 'F9', 'F10'], ['dev.pot.4', 'F11', 'F12'],
+  ['dev.pot.5', 'PrintScreen', 'ScrollLock'], ['dev.pot.6', 'Pause', 'Insert'], ['dev.pot.7', 'Home', 'PageUp'], ['dev.pot.8', 'End', 'PageDown'], ['dev.pot.9', 'ArrowRight', 'ArrowLeft'],
+  ['dev.pot.10', 'ArrowDown', 'ArrowUp'], ['dev.pot.11', 'Backslash', 'Slash']];
+const KNOB_KEYS = {}; RM_KNOBS.forEach(([id, dec, inc]) => { KNOB_KEYS[dec] = [id, -1]; KNOB_KEYS[inc] = [id, 1]; });
+const rmProfile = () => db.ls.get('rmProfile', true);
+const knobLast = {};
+function knobStep(code) {
+  const [id, dir0] = KNOB_KEYS[code], c = controls.get(id); if (!c) return;
+  const dir = dir0 * (db.ls.get('knobInvert', false) ? -1 : 1), t = performance.now(), fast = t - (knobLast[id] || 0) < 45 ? 2 : 1; knobLast[id] = t;
+  const sens = db.ls.get('knobSens', 32);
+  if (id === 'dev.tempo' && !sh()) { setBpm(S.bpm + dir * fast * (sens <= 16 ? 4 : sens <= 32 ? 2 : 1)); return; }
+  c.setNorm(clamp(c.getNorm() + (dir * fast) / sens, 0, 1));
+}
 /** True when keys must be reserved for the RM-808 (no computer-keyboard shortcuts / notes). */
 const kbdCtrl = () => db.ls.get('kbdCtrl', null) ?? (decoder.kbdDetected || matchMedia('(pointer: coarse)').matches || Object.keys(midi.map).filter((k) => k.startsWith('key:')).length >= 8);
 let seq;
@@ -836,7 +852,7 @@ const heldKeys = new Map();
 function onKey(e, down) {
   if (e.target.matches?.('input, textarea')) return;
   // The RM-808 is a Bluetooth keyboard: its keys are learnable / mappable like MIDI controls.
-  const code = e.code && e.code !== 'Unidentified' ? e.code : 'k_' + e.key, mapped = midi.map[`key:${code}`], reserved = kbdCtrl() || mapped || midi.learnTarget;
+  const code = e.code && e.code !== 'Unidentified' ? e.code : 'k_' + e.key, mapped = midi.map[`key:${code}`], reserved = kbdCtrl() || mapped || midi.learnTarget || (rmProfile() && KNOB_KEYS[code]);
   if ((code !== 'Escape' || kbdCtrl()) && (reserved || S.tab === 'midi')) {
     if (reserved) e.preventDefault();
     if (!e.repeat) keyEvent(code, down, 'Clavier');
@@ -943,6 +959,7 @@ function renderSong() {
 
 // ---------------------------------------------------------------- MIDI
 const monitorLog = [];
+function logKnob(code, input) { msgCount++; document.querySelectorAll('.rxdot').forEach((d) => { d.classList.add('on'); clearTimeout(d._t); d._t = setTimeout(() => d.classList.remove('on'), 150); }); const [id, dir] = KNOB_KEYS[code]; logLine(`${input} · potard ${id.replace('dev.', '').toUpperCase()} ${dir > 0 ? '+' : '−'}  (${code})`); }
 function logLine(line) {
   monitorLog.unshift(line); monitorLog.length = Math.min(monitorLog.length, 500);
   const mon = document.getElementById('midiMon'); if (mon) mon.textContent = monitorLog.join('\n');
@@ -961,7 +978,7 @@ function diagnosticReport() {
   return ['=== Rapport RM-808 Studio ===', new Date().toISOString(), 'Navigateur : ' + navigator.userAgent,
     `Web MIDI : ${midi.supported ? 'oui' : 'non'} (${midi.inputs.map((i) => i.name).join(', ') || 'aucune entrée'})`,
     `Bluetooth web : ${ble.supported ? 'oui' : 'non'} · connecté : ${ble.connected ? ble.mode : 'non'}`, `WebHID : ${hid.supported ? 'oui' : 'non'} · Manettes : ${pads.count}`,
-    `Clavier RM-808 : ${decoder.kbdDetected ? 'détecté' : 'non détecté'} · touches réservées : ${kbdCtrl() ? 'oui' : 'non'}`, `Décodage brut : ${decoder.mode} · Messages reçus : ${msgCount} · Assignations : ${Object.keys(midi.map).length}`, ...ble.summary, '--- Assignations ---',
+    `Clavier RM-808 : ${decoder.kbdDetected ? 'détecté' : 'non détecté'} · touches réservées : ${kbdCtrl() ? 'oui' : 'non'}`, `Profil potards : ${rmProfile() ? 'oui' : 'non'} · inversé : ${db.ls.get('knobInvert', false) ? 'oui' : 'non'} · course : ${db.ls.get('knobSens', 32)}`, `Décodage brut : ${decoder.mode} · Messages reçus : ${msgCount} · Assignations : ${Object.keys(midi.map).length}`, ...ble.summary, '--- Assignations ---',
     ...Object.entries(midi.map).map(([k, e]) => `${k} → ${e.id}`), '--- Moniteur (plus récent en premier) ---', ...monitorLog.slice(0, 300)].join('\n');
 }
 async function copyReport() {
@@ -1029,6 +1046,10 @@ function renderMidi() {
         toggle('Touches réservées au RM-808', kbdCtrl(), (x) => { db.ls.set('kbdCtrl', x); toast(x ? 'Les raccourcis du clavier d\'ordinateur sont désactivés' : 'Raccourcis du clavier d\'ordinateur réactivés'); })),
       way(hid.supported, hid.connected, 'HID direct (ordinateur)', hid.connected ? `Connecté à « ${hid.device.productName} ».` : hid.supported ? 'Pour un RM-808 appairé à l\'ordinateur ou branché en USB qui n\'apparaît pas en MIDI.' : 'Indisponible ici (Chrome/Edge sur ordinateur uniquement).', hid.supported && !hid.connected ? button('🟣 Connecter en HID', connectHid) : null),
       way(pads.supported, pads.count > 0, 'Manette de jeu', pads.count ? 'Manette détectée : ses boutons et axes sont assignables.' : 'Détection automatique : appuie sur un bouton du RM-808 si le système le voit comme une manette.')),
+    h('div', { class: 'row knobset' }, toggle('Profil RM-808 : potards intégrés', rmProfile(), (x) => { db.ls.set('rmProfile', x); renderMidi(); }),
+      toggle('Inverser le sens des potards', db.ls.get('knobInvert', false), (x) => db.ls.set('knobInvert', x)),
+      h('label', {}, 'Course des potards : ', select([['16', 'Rapide (16 crans)'], ['32', 'Normale (32 crans)'], ['64', 'Fine (64 crans)'], ['127', 'Très fine (127 crans)']], String(db.ls.get('knobSens', 32)), (x) => db.ls.set('knobSens', +x))),
+      h('span', { class: 'hint' }, 'Les 13 potards du RM-808 sont reconnus d\'office (TEMPO = F1/F2, potards 1 à 12 = F3/F4 … \\ et /). Si un potard agit à l\'envers, active « Inverser ».')),
     h('div', { class: 'row' }, h('label', {}, 'Décodage du protocole propriétaire : ', select([['auto', 'Automatique'], ['kbd', 'Clavier HID'], ['event', 'Événements (identifiant + valeur)'], ['state', 'État complet (compare les paquets)']], decoder.mode, (x) => { decoder.mode = x; db.ls.set('rawMode', x); })),
       h('span', { class: 'hint' }, 'Si un potard ou un pad est mal reconnu en Bluetooth direct, change ce réglage puis refais l\'assistant.'))));
   const inputs = [['all', 'Toutes les entrées'], ...midi.inputs.map((i) => [i.id, i.name])];
@@ -1053,7 +1074,7 @@ function renderMidi() {
 }
 
 // Guided mapping of every RM-808 hardware control
-const WIZ = [
+const WIZ_ALL = [
   ['dev.tempo', 'Tourne le potard TEMPO'], ...TRACKS.map((t, i) => [`dev.pot.${i}`, `Tourne le potard au-dessus de ${t.toUpperCase()}`]),
   ['dev.play', 'Appuie sur ▶/❚❚'], ['dev.rec', 'Appuie sur ● REC'],
   ...TRACKS.map((t, i) => [`dev.padTop.${i}`, `Frappe le pad du HAUT de ${t.toUpperCase()}`]), ...TRACKS.map((t, i) => [`dev.padBot.${i}`, `Frappe le pad du BAS de ${t.toUpperCase()}`]),
@@ -1065,6 +1086,7 @@ const WIZ = [
   ['dev.loop.1', 'LOOPER 1'], ['dev.loop.2', 'LOOPER 2'], ['dev.loop.4', 'LOOPER 4'], ['dev.loop.8', 'LOOPER 8'],
 ];
 function startWizard() {
+  const WIZ = rmProfile() ? WIZ_ALL.filter(([id]) => id !== 'dev.tempo' && !id.startsWith('dev.pot.')) : WIZ_ALL;
   if (!ble.connected && (!midi.supported || !midi.inputs.length)) toast('Aucune entrée MIDI détectée — connecte le RM-808 (Bluetooth MIDI ou USB) d\'abord.');
   showTab('device'); let i = 0;
   const box = h('div', { class: 'wizard' }); document.body.append(box);
@@ -1192,6 +1214,8 @@ async function boot() {
   window.addEventListener('keyup', (e) => onKey(e, false));
   decoder.onKbd = pads.onChange = hid.onChange = ble.onChange = () => { midiStatus(); if (S.tab === 'midi') renderMidi(); }; pads.start();
   midi.listeners.add(routeMidi); midi.statusListeners.add(() => { midiStatus(); if (S.tab === 'midi') renderMidi(); });
+  for (const k of Object.keys(midi.map)) if (k.startsWith('raw::') || (rmProfile() && k.startsWith('key:') && KNOB_KEYS[k.slice(4)])) delete midi.map[k];
+  midi.save();
   await midi.init(); midiStatus();
 }
 
@@ -1200,4 +1224,4 @@ document.getElementById('start').addEventListener('click', async (e) => {
   try { await boot(); document.getElementById('splash').remove(); }
   catch (err) { console.error(err); document.getElementById('splashMsg').textContent = 'Erreur : ' + err.message; }
 });
-window.__rm808 = { S, engine, midi, ble, decoder, keyEvent, kbdCtrl, diagnosticReport, get seq() { return seq; } };
+window.__rm808 = { S, engine, midi, ble, decoder, keyEvent, KNOB_KEYS, kbdCtrl, diagnosticReport, get seq() { return seq; } };
