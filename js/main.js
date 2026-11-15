@@ -1174,7 +1174,7 @@ async function buildPack(g, mode) {
 }
 // ---------------------------------------------------------------- ElevenLabs sample bank (public/samples/eleven)
 const EL_SLOTS = ['kick', 'snare', 'perc_hi', 'perc_mid', 'tom', 'rim', 'clap', 'shaker', 'crash', 'ohat', 'chat'];
-const EL_LABELS = { kick: 'Kick', snare: 'Caisse claire', clap: 'Clap', chat: 'Charley fermé', ohat: 'Charley ouvert', crash: 'Crash', perc_hi: 'Perc aiguë', perc_mid: 'Perc bois/métal', tom: 'Tom', rim: 'Rim', shaker: 'Shaker/cloche', bass: 'Basse (C)', stab: 'Accord', vocal: 'Chop vocal', riser: 'Riser', impact: 'Impact' };
+const EL_LABELS = { kick: 'Kick', snare: 'Caisse claire', clap: 'Clap', chat: 'Charley fermé', ohat: 'Charley ouvert', crash: 'Crash', perc_hi: 'Perc aiguë', perc_mid: 'Perc bois/métal', tom: 'Tom', rim: 'Rim', shaker: 'Shaker/cloche', bass: 'Basse (C)', stab: 'Accord', vocal: 'Chop vocal', riser: 'Riser', impact: 'Impact', kick_2: 'Kick 2', snare_2: 'Caisse claire 2', clap_2: 'Clap 2', chat_2: 'Charley 2', perc_lo: 'Perc grave', bass_2: 'Basse 2 (C)', stab_2: 'Accord majeur', vocal_2: 'Chop vocal 2', downlifter: 'Downlifter', fill: 'Roulement', loop: 'Boucle batterie' };
 let EL = null, elGenre = null;
 async function loadElevenBank() {
   try { const r = await fetch('samples/eleven/manifest.json'); if (!r.ok) return; EL = await r.json(); } catch (e) { return; }
