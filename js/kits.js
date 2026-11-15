@@ -20,6 +20,10 @@ export const BUILTIN_KITS = [
   kit('Electro Zap', { 0: { tune: 0.55, decay: 0.35, pitch: 1 }, 2: { voice: 'zap', tune: 0.6 }, 3: { voice: 'zap', tune: 0.4 }, 4: { voice: 'zap', tune: 0.2 }, 7: { voice: 'fmperc' } }),
   kit('Minimal Click', { 0: { decay: 0.2, tone: 0.8, click: 0.3 }, 1: { voice: 'rim', tune: 0.3 }, 6: { decay: 0.15 }, 7: { voice: 'clave' }, 8: { voice: 'shaker' } }),
   kit('Percs Latines', { 2: { voice: 'conga', tune: 0.8 }, 3: { voice: 'conga', tune: 0.5 }, 4: { voice: 'conga', tune: 0.2 }, 5: { voice: 'clave' }, 8: { voice: 'shaker' } }),
+  kit('D&B Rollers', { 0: { tune: 0.62, decay: 0.28, click: 0.45, pitch: 0.75, tone: 0.65 }, 1: { tune: 0.7, tone: 0.85, decay: 0.3, drive: 0.15 }, 6: { tone: 0.75, decay: 0.2 }, 5: { tune: 0.7 }, 10: { decay: 0.1, tone: 0.95 }, 9: { decay: 0.3, tone: 0.9 }, 8: { voice: 'shaker', decay: 0.3 } }),
+  kit('D&B Neuro Punch', { 0: { tune: 0.55, decay: 0.32, click: 0.6, pitch: 0.9, drive: 0.4 }, 1: { tune: 0.62, tone: 0.95, decay: 0.38, drive: 0.35 }, 6: { voice: 'noise', tune: 0.7, tone: 0.8, decay: 0.2 }, 5: { voice: 'fmperc', tune: 0.75 }, 7: { voice: 'zap', tune: 0.5 }, 10: { decay: 0.08, tone: 1 } }),
+  kit('D&B Liquid Doux', { 0: { tune: 0.58, decay: 0.35, tone: 0.45, click: 0.2 }, 1: { tune: 0.55, tone: 0.55, decay: 0.45 }, 5: { voice: 'clave', tune: 0.4 }, 8: { voice: 'shaker', decay: 0.4 }, 9: { decay: 0.45, tone: 0.6 }, 10: { decay: 0.12, tone: 0.65 } }),
+  kit('Jungle Breaks', { 0: { tune: 0.5, decay: 0.38, tone: 0.4, drive: 0.25 }, 1: { tune: 0.75, tone: 0.7, decay: 0.28, drive: 0.3 }, 2: { voice: 'conga', tune: 0.7 }, 3: { voice: 'conga', tune: 0.45 }, 5: { tune: 0.8 }, 8: { decay: 0.55, tone: 0.5 }, 10: { decay: 0.14, tone: 0.55 } }),
   kit('FM Métal', { 0: { voice: 'fmperc', tune: 0.1, tone: 0.2, decay: 0.5 }, 1: { voice: 'fmperc', tune: 0.5, tone: 0.9, decay: 0.3 }, 2: { voice: 'fmperc', tune: 0.7 }, 3: { voice: 'fmperc', tune: 0.55 }, 4: { voice: 'fmperc', tune: 0.4 }, 7: { voice: 'fmperc', tune: 0.8, tone: 0.6 } }),
 ];
 
