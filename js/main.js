@@ -557,7 +557,7 @@ async function startGenre(g, { soundsToo = true } = {}) {
   gr.bassDeg.forEach(([s, d], i) => Object.assign(p.bass[s], { on: true, note: deg(d, 'bass'), noteSet: true, acc: i === 0, slide: gr.slide && Math.random() < 0.3 }));
   p.synth = p.synth.map(() => []); gr.leadDeg.forEach(([s, d]) => (p.synth[s] = [deg(d, 'lead')]));
   if (soundsToo) {
-    const ki = S.kits.findIndex((k) => k.name === G.kit); if (ki >= 0) await loadKit(ki);
+    let ki = S.kits.findIndex((k) => k.id === 'el_' + g); if (ki < 0) ki = S.kits.findIndex((k) => k.name === G.kit); if (ki >= 0) await loadKit(ki);
     for (const [part, role] of [['bass', 'bass'], ['lead', 'lead']]) { const n = Math.floor(Math.random() * PER_BUCKET); Object.assign(libOf(part), { g, role, n }); const sy = synthOf(part); sy.setPatch(genrePreset(g, role, n)); S[part] = sy.patch; }
     const ch = FX_CHAINS.find((c) => c.name === G.chain); if (ch) applyChain(ch);
     savePlay(); renderSynth('lead'); renderSynth('bass');
@@ -1172,6 +1172,45 @@ async function buildPack(g, mode) {
   } catch (e) { console.error(e); toast('Fabrication du pack impossible sur ce navigateur'); }
   packBusy = false; if (prog) prog.textContent = '';
 }
+// ---------------------------------------------------------------- ElevenLabs sample bank (public/samples/eleven)
+const EL_SLOTS = ['kick', 'snare', 'perc_hi', 'perc_mid', 'tom', 'rim', 'clap', 'shaker', 'crash', 'ohat', 'chat'];
+const EL_LABELS = { kick: 'Kick', snare: 'Caisse claire', clap: 'Clap', chat: 'Charley fermé', ohat: 'Charley ouvert', crash: 'Crash', perc_hi: 'Perc aiguë', perc_mid: 'Perc bois/métal', tom: 'Tom', rim: 'Rim', shaker: 'Shaker/cloche', bass: 'Basse (C)', stab: 'Accord', vocal: 'Chop vocal', riser: 'Riser', impact: 'Impact' };
+let EL = null, elGenre = null;
+async function loadElevenBank() {
+  try { const r = await fetch('samples/eleven/manifest.json'); if (!r.ok) return; EL = await r.json(); } catch (e) { return; }
+  const kits = [];
+  for (const [g, roles] of Object.entries(EL.genres || {})) {
+    if (EL_SLOTS.filter((x) => roles.includes(x)).length < 8) continue;
+    kits.push({ id: 'el_' + g, name: `${GENRES[g]?.name || g} (ElevenLabs)`, builtin: true,
+      tracks: EL_SLOTS.map((role, i) => makeTrack(['kick', 'snare', 'htom', 'mtom', 'ltom', 'rim', 'clap', 'cowbell', 'cymbal', 'ohat', 'chat'][i], roles.includes(role)
+        ? { sampleId: `url:samples/eleven/${g}/${role}.mp3`, sampleName: `${EL_LABELS[role]} · ElevenLabs`, decay: 1, tone: 1, tune: 0.5, level: role === 'kick' ? 0.85 : 0.72 } : {})) });
+  }
+  const at = S.kits.findIndex((k) => !k.builtin); S.kits.splice(at < 0 ? S.kits.length : at, 0, ...kits);
+}
+const previewCache = new Map();
+async function previewSample(url) {
+  try {
+    let buf = previewCache.get(url); if (!buf) { buf = await engine.ctx.decodeAudioData(await (await fetch(url)).arrayBuffer()); previewCache.set(url, buf); }
+    const src = engine.ctx.createBufferSource(); src.buffer = buf; const g = engine.ctx.createGain(); g.gain.value = 0.8; src.connect(g).connect(engine.drumBus); src.start();
+  } catch (e) { toast('Lecture impossible'); }
+}
+async function assignToTrack(url, label) {
+  const i = Math.min(S.sel, DRUM_TRACKS - 1), id = 'url:' + url;
+  if (!engine.samples.has(id)) engine.samples.set(id, previewCache.get(url) || await engine.ctx.decodeAudioData(await (await fetch(url)).arrayBuffer()));
+  Object.assign(S.kit.tracks[i], { sampleId: id, sampleName: label, decay: 1, tone: 1, tune: 0.5, drive: 0 });
+  renderSeq(); renderKits(); trigger(i); toast(`${label} → ${TRACKS[i]} (pense à « Enregistrer » le kit)`);
+}
+function elevenPanel() {
+  if (!EL) return null;
+  const gs = Object.keys(EL.genres); elGenre ||= gs.includes(S.genre) ? S.genre : gs[0];
+  const roles = EL.genres[elGenre] || [];
+  return h('div', { class: 'panel packs' }, h('div', { class: 'ptitle' }, `BANQUE ELEVENLABS — ${EL.count} samples générés par IA`),
+    h('div', { class: 'row' }, select(gs.map((g) => [g, GENRES[g]?.name || g]), elGenre, (x) => { elGenre = x; renderKits(); }),
+      S.kits.some((k) => k.id === 'el_' + elGenre) ? button('🥁 Charger le kit de ce style', () => loadKit(S.kits.findIndex((k) => k.id === 'el_' + elGenre)), { cls: 'accent' }) : null,
+      h('span', { class: 'hint' }, `Touche un son pour l'écouter, « → » pour le mettre sur la piste sélectionnée (${TRACKS[Math.min(S.sel, DRUM_TRACKS - 1)]}).`)),
+    h('div', { class: 'elgrid' }, roles.map((role) => { const url = `samples/eleven/${elGenre}/${role}.mp3`, label = `${GENRES[elGenre]?.short || elGenre} ${EL_LABELS[role] || role}`;
+      return h('div', { class: 'elitem' }, h('button', { class: 'chip', onclick: () => previewSample(url) }, '▶ ' + (EL_LABELS[role] || role)), h('button', { class: 'btn mini', title: 'Mettre sur la piste sélectionnée', onclick: () => assignToTrack(url, label) }, '→')); })));
+}
 function samplePacksPanel() {
   return h('div', { class: 'panel packs' }, h('div', { class: 'ptitle' }, 'PACKS DE SAMPLES PAR GENRE — sons originaux, libres de droits'),
     h('div', { class: 'row' }, select(GENRE_IDS.map((g) => [g, GENRES[g].name]), packGenre, (x) => (packGenre = x)),
@@ -1196,7 +1235,7 @@ async function renderKits() {
   const list = h('div', { class: 'kitlist' }, S.kits.map((k, i) => h('button', { class: `kit ${i === S.kitIdx ? 'on' : ''}`, onclick: () => loadKit(i) }, h('b', {}, k.name), h('small', {}, k.builtin ? 'intégré' : 'perso'))));
   const detail = h('div', { class: 'panel' }, h('div', { class: 'ptitle' }, 'Contenu du kit courant (clic = écouter)'),
     h('div', { class: 'kittracks' }, S.kit.tracks.map((t, i) => h('div', { class: 'kt', onclick: () => trigger(i) }, h('b', {}, TRACKS[i]), h('span', {}, t.sampleName ? '📁 ' + t.sampleName : VOICES[t.voice]?.[0])))));
-  v.append(bar, samplePacksPanel(), list, detail, h('p', { class: 'hint' }, 'Kits infinis : « > » sur DRUM KIT après le dernier kit génère un nouveau kit. Chaque piste peut être une voix synthétisée ou n\'importe quel sample (glisser-déposer dans le Séquenceur). Les kits perso sont stockés dans le navigateur ; exporte-les pour les partager.'));
+  v.append(bar, elevenPanel(), samplePacksPanel(), list, detail, h('p', { class: 'hint' }, 'Kits infinis : « > » sur DRUM KIT après le dernier kit génère un nouveau kit. Chaque piste peut être une voix synthétisée ou n\'importe quel sample (glisser-déposer dans le Séquenceur). Les kits perso sont stockés dans le navigateur ; exporte-les pour les partager.'));
 }
 async function saveKit() {
   if (S.kit.builtin) { S.kit = cloneKit(S.kit, prompt('Nom du nouveau kit', S.kit.name + ' perso') || S.kit.name + ' perso'); S.kits.push(S.kit); S.kitIdx = S.kits.length - 1; }
@@ -1483,6 +1522,7 @@ async function boot() {
   engine.rack.add('compressor', { params: { threshold: -14, ratio: 3, makeup: 1.2 } });
   S.fx1 = flt.id; S.fx2 = crush.id;
   importUserTables(db.ls.get('userTables', {}));
+  await loadElevenBank();
   const userKits = await db.all('kits'); S.kits.push(...userKits);
   applyKitMix();
   // demo groove in pattern 1
